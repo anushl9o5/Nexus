@@ -4,7 +4,7 @@ import { analyzePaper, getPaperSuggestions } from './services/geminiService';
 import { SearchState, TabState, Paper } from './types';
 import PaperCard from './components/PaperCard';
 import GraphView from './components/GraphView';
-import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon } from './components/Icons';
+import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon, ChevronDownIcon, HistoryIcon } from './components/Icons';
 
 type ViewMode = 'LIST' | 'GRAPH';
 
@@ -13,6 +13,10 @@ export default function App() {
   // We now track a list of papers that form the "Context" of the search
   const [contextPapers, setContextPapers] = useState<Paper[]>([]);
   
+  // History State: Stores arrays of Paper[] (previous contexts)
+  const [searchHistory, setSearchHistory] = useState<Paper[][]>([]);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
   const [state, setState] = useState<SearchState>({
     isLoading: false,
     error: null,
@@ -20,6 +24,10 @@ export default function App() {
   });
   const [activeTab, setActiveTab] = useState<TabState>(TabState.CORRELATED);
   const [viewMode, setViewMode] = useState<ViewMode>('GRAPH'); // Default to Graph
+  
+  // Dropdown state for the context summary
+  const [isContextExpanded, setIsContextExpanded] = useState(false);
+
   const resultsRef = useRef<HTMLDivElement>(null);
   
   // Autocomplete State
@@ -58,6 +66,19 @@ export default function App() {
     return () => clearTimeout(debounceTimer);
   }, [query]); // Removed state.isLoading to prevent re-opening dropdown when search completes
 
+  const addToHistory = (newContext: Paper[]) => {
+    setSearchHistory(prev => {
+      // Avoid exact duplicate of the immediate previous search to keep history clean
+      if (prev.length > 0) {
+        const lastParams = prev[0].map(p => p.title).sort().join('|');
+        const newParams = newContext.map(p => p.title).sort().join('|');
+        if (lastParams === newParams) return prev;
+      }
+      const updated = [newContext, ...prev];
+      return updated.slice(0, 5); // Keep max 5
+    });
+  };
+
   const executeSearch = async (papers: Paper[]) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
     
@@ -82,6 +103,17 @@ export default function App() {
     }
   };
 
+  const handleRestoreHistory = async (historyContext: Paper[]) => {
+    setIsHistoryOpen(false);
+    setContextPapers(historyContext);
+    // Update query to reflect the primary paper of that history state for clarity
+    if (historyContext.length > 0) {
+        setQuery(historyContext[0].title);
+        skipSuggestionFetch.current = true; 
+    }
+    await executeSearch(historyContext);
+  };
+
   const handleInitialSearch = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!query.trim()) return;
@@ -100,6 +132,19 @@ export default function App() {
     };
 
     const newContext = [initialRoot];
+    addToHistory(newContext); // Add to history
+    setContextPapers(newContext);
+    await executeSearch(newContext);
+  };
+
+  const handleNewSearch = async (paper: Paper) => {
+    skipSuggestionFetch.current = true; // Prevent autocomplete popup
+    setQuery(paper.title);
+    setSuggestions([]);
+    setShowSuggestions(false);
+
+    const newContext = [paper];
+    addToHistory(newContext); // Add to history
     setContextPapers(newContext);
     await executeSearch(newContext);
   };
@@ -116,6 +161,7 @@ export default function App() {
     if (contextPapers.some(p => p.title === paper.title)) return;
     
     const newContext = [...contextPapers, paper];
+    addToHistory(newContext); // Add to history
     setContextPapers(newContext);
     await executeSearch(newContext);
   };
@@ -132,7 +178,7 @@ export default function App() {
             <div className="absolute top-0 left-0 w-full h-full border-4 border-[#e8eaed] rounded-full border-t-transparent animate-spin"></div>
           </div>
           <p className="text-[#9aa0a6] animate-pulse font-medium">
-             {contextPapers.length > 1 ? 'Synthesizing cluster connections...' : 'Analyzing literature graph...'}
+             {contextPapers.length > 1 ? 'Synthesizing...' : 'Analyzing literature graph...'}
           </p>
         </div>
       );
@@ -153,27 +199,42 @@ export default function App() {
       ? state.data.correlatedPapers 
       : state.data.authorContextPapers;
 
+    // Dynamically generate the context summary title
+    const contextTitle = contextPapers.length > 0
+      ? `Summary of ${contextPapers.map(p => p.title).join(', ')}`
+      : 'Summary of Analyzed Subject';
+
     return (
       <div ref={resultsRef} className="animate-fade-in pb-20">
-        {/* Context Header */}
-        <div className="mb-8 bg-[#303134] text-[#e8eaed] rounded-2xl p-6 shadow-lg relative overflow-hidden border border-[#5f6368]/30">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-[0.02] rounded-full transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-          <h2 className="text-xs font-bold uppercase tracking-widest text-[#9aa0a6] mb-2">
-            {contextPapers.length > 1 ? 'Cluster Analysis' : 'Analyzed Subject'}
-          </h2>
-          <p className="text-xl md:text-2xl font-serif font-medium leading-snug text-white">
-            {state.data.originalPaperContext}
-          </p>
-          
-          {contextPapers.length > 1 && (
-            <div className="mt-4 flex flex-wrap gap-2">
-               {contextPapers.map((p, i) => (
-                 <span key={i} className="text-xs bg-[#202124] border border-[#5f6368] px-2 py-1 rounded-lg text-[#9aa0a6]">
-                   {p.title}
-                 </span>
-               ))}
+        
+        {/* Context Dropdown (Collapsible Accordion) */}
+        <div className="mb-6 bg-[#303134] text-[#e8eaed] rounded-xl shadow-sm border border-[#5f6368]/30 overflow-hidden transition-all duration-300">
+          <button 
+            onClick={() => setIsContextExpanded(!isContextExpanded)}
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-[#3c4043] transition-colors group"
+          >
+            <div className="flex items-center gap-3 overflow-hidden">
+               <div className="p-1.5 bg-[#202124] rounded-lg text-[#9aa0a6] shrink-0 group-hover:text-[#e8eaed] transition-colors">
+                 <BookOpenIcon className="w-4 h-4" />
+               </div>
+               <span className="font-medium text-sm md:text-base truncate text-[#e8eaed] pr-4">
+                 {contextTitle}
+               </span>
             </div>
-          )}
+            <ChevronDownIcon className={`w-5 h-5 text-[#9aa0a6] transition-transform duration-300 shrink-0 ${isContextExpanded ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Expanded Content */}
+          <div className={`bg-[#202124]/50 border-t border-[#5f6368]/30 transition-all duration-300 ease-in-out ${isContextExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+             <div className="p-4 md:p-6">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#9aa0a6] mb-3">
+                    {contextPapers.length > 1 ? 'Cluster Analysis' : 'Core Theme'}
+                </h3>
+                <p className="text-lg font-serif leading-relaxed text-white">
+                   {state.data.originalPaperContext}
+                </p>
+             </div>
+          </div>
         </div>
 
         {/* Controls Row */}
@@ -255,6 +316,7 @@ export default function App() {
                papers={papersToShow}
                type={activeTab === TabState.CORRELATED ? 'correlated' : 'author'}
                onAddToContext={handleAddToContext}
+               onNewSearch={handleNewSearch}
              />
           </div>
         )}
@@ -268,19 +330,21 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#202124] text-[#e8eaed]">
-      {/* Navbar */}
-      <header className="bg-[#202124] sticky top-0 z-50 pt-4">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-center">
-          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => {
-              setContextPapers([]);
-              setState({ isLoading: false, error: null, data: null });
-              setQuery('');
-          }}>
-            <BookOpenIcon className="w-6 h-6 text-[#e8eaed]" />
-            <span className="text-xl font-bold text-[#e8eaed] tracking-tight">ResearchNexus</span>
+      {/* Navbar - Only visible on Landing Page */}
+      {isLanding && (
+        <header className="bg-[#202124] sticky top-0 z-50 pt-4">
+          <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-center">
+            <div className="flex items-center space-x-3 cursor-pointer" onClick={() => {
+                setContextPapers([]);
+                setState({ isLoading: false, error: null, data: null });
+                setQuery('');
+            }}>
+              <BookOpenIcon className="w-6 h-6 text-[#e8eaed]" />
+              <span className="text-xl font-bold text-[#e8eaed] tracking-tight">Nexus</span>
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {/* Main Content */}
       <main className="flex-grow flex flex-col relative">
@@ -299,12 +363,14 @@ export default function App() {
 
         {/* Main Layout Container 
             - If isLanding: flex-grow pushes content to bottom (justify-end)
-            - If results: Standard flow (pt-8)
+            - If results: Standard flow, search bar at top (pt-6)
         */}
-        <div className={`max-w-4xl mx-auto w-full px-4 flex flex-col transition-all duration-500 ${isLanding ? 'flex-grow justify-end pb-12' : 'pt-8'}`}>
+        <div className={`max-w-4xl mx-auto w-full px-4 flex flex-col transition-all duration-500 ${isLanding ? 'flex-grow justify-end pb-12' : 'pt-6'}`}>
           
-          {/* Search Bar Area */}
-          <div className="relative z-40 w-full max-w-2xl mx-auto">
+          {/* Search Bar Area 
+              - When !isLanding, we make it sticky at the top to serve as the new 'header'
+          */}
+          <div className={`relative z-40 w-full max-w-2xl mx-auto ${!isLanding ? 'sticky top-4' : ''}`}>
             <form onSubmit={handleInitialSearch} className="relative z-10">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                 <SearchIcon className="h-6 w-6 text-[#9aa0a6] group-focus-within:text-[#e8eaed] transition-colors" />
@@ -381,6 +447,56 @@ export default function App() {
 
         </div>
       </main>
+
+      {/* History Floating Button & Popover - Only shown if history exists and NOT on landing page */}
+      {!isLanding && searchHistory.length > 0 && (
+        <div className="fixed bottom-6 left-6 z-50">
+          {isHistoryOpen && (
+            <div className="absolute bottom-full left-0 mb-4 w-72 bg-[#303134] border border-[#5f6368]/50 rounded-xl shadow-2xl overflow-hidden animate-fade-in-up">
+              <div className="px-4 py-3 border-b border-[#5f6368]/30 flex justify-between items-center bg-[#202124]">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#9aa0a6]">Recent Searches</span>
+                <button onClick={() => setIsHistoryOpen(false)} className="text-[#9aa0a6] hover:text-[#e8eaed]">
+                  <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+                </button>
+              </div>
+              <div className="max-h-60 overflow-y-auto no-scrollbar">
+                {searchHistory.map((histCtx, idx) => {
+                  const label = histCtx.length === 1 ? histCtx[0].title : `Cluster: ${histCtx.length} Papers`;
+                  return (
+                    <button 
+                      key={idx}
+                      onClick={() => handleRestoreHistory(histCtx)}
+                      className="w-full text-left px-4 py-3 hover:bg-[#3c4043] transition-colors border-b border-[#5f6368]/30 last:border-0 flex items-start gap-3 group"
+                    >
+                      <div className="mt-1 opacity-50 group-hover:opacity-100 text-[#e8eaed]">
+                          {histCtx.length > 1 ? <NetworkIcon className="w-4 h-4" /> : <BookOpenIcon className="w-4 h-4" />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-[#e8eaed] truncate">{label}</div>
+                          {histCtx.length > 1 && (
+                            <div className="text-[10px] text-[#9aa0a6] truncate mt-0.5">
+                              {histCtx.map(p => p.title).slice(0, 2).join(', ')}...
+                            </div>
+                          )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+          
+          <button 
+            onClick={() => setIsHistoryOpen(!isHistoryOpen)}
+            className={`p-3.5 rounded-full shadow-lg border border-[#5f6368]/50 transition-all duration-300 ${
+              isHistoryOpen ? 'bg-[#e8eaed] text-[#202124] hover:bg-white' : 'bg-[#303134] text-[#9aa0a6] hover:text-[#e8eaed]'
+            }`}
+            title="Search History"
+          >
+            <HistoryIcon className="w-6 h-6" />
+          </button>
+        </div>
+      )}
       
       <style>{`
         @keyframes fadeInUp {

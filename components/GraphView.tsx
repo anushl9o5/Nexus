@@ -1,18 +1,23 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Paper } from '../types';
 import PaperCard from './PaperCard';
-import { UsersIcon, BookOpenIcon, PlusIcon } from './Icons';
+import { UsersIcon, BookOpenIcon, PlusIcon, InfoIcon } from './Icons';
 
 interface GraphViewProps {
   rootPapers: Paper[];
   papers: Paper[];
   type: 'correlated' | 'author';
   onAddToContext: (paper: Paper) => void;
+  onNewSearch: (paper: Paper) => void;
 }
 
-const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddToContext }) => {
+const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddToContext, onNewSearch }) => {
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
+  // Track which node is 'active' (clicked) to show the menu options
+  const [activeNodeIndex, setActiveNodeIndex] = useState<number | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 600 });
   const [time, setTime] = useState(0);
@@ -57,9 +62,6 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
   const cy = dimensions.height / 2;
   const maxRadius = Math.min(dimensions.width, dimensions.height) * 0.45;
   
-  // Dark Mode Monochrome Palette
-  // Root Nodes: White #ffffff
-  // Nodes: Light Grey #e8eaed
   const rootColor = '#ffffff'; 
   const nodeColor = '#e8eaed'; 
 
@@ -129,8 +131,18 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
     return { ...node, x, y, score, relativeStrength, radius, id: i };
   });
 
+  const clearSelection = () => {
+    setActiveNodeIndex(null);
+    setSelectedPaper(null);
+  };
+
   return (
-    <div className="relative w-full bg-[#202124]" style={{ height: dimensions.height }} ref={containerRef}>
+    <div 
+      className="relative w-full bg-[#202124]" 
+      style={{ height: dimensions.height }} 
+      ref={containerRef}
+      onClick={clearSelection} // Clicking background clears selection
+    >
       
       {/* Background Artifacts - Subtle Monochrome Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -144,13 +156,11 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
         className="absolute top-0 left-0 z-10 pointer-events-auto overflow-visible"
       >
         <defs>
-          {/* Node gradient: White center to slightly darker outer edge */}
           <radialGradient id="nodeGradient" cx="0.5" cy="0.5" r="0.5">
             <stop offset="0%" stopColor="#ffffff" />
             <stop offset="100%" stopColor="#bdc1c6" />
           </radialGradient>
           
-          {/* Glow effect for hover */}
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
              <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
              <feMerge>
@@ -185,7 +195,6 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
 
           return (
             <g key={`edge-${i}`}>
-               {/* Outer glow/width for the line */}
                <path 
                  d={`M ${startX} ${startY} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
                  stroke="#202124" 
@@ -193,7 +202,6 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
                  strokeOpacity={0.8}
                  fill="none" 
                />
-               {/* Inner Core Line */}
                <path
                 d={`M ${startX} ${startY} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
                 stroke={rootColor}
@@ -226,8 +234,11 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
         {/* LAYER 3: Result Nodes */}
         {animatedNodes.map((node, i) => {
           const isHovered = hoveredIndex === i;
+          const isActive = activeNodeIndex === i;
           const isSelected = selectedPaper === node.paper;
-          const displayRadius = isHovered ? node.radius + 5 : node.radius;
+          
+          const displayRadius = (isHovered || isActive) ? node.radius + 5 : node.radius;
+          const showMenu = isHovered || isActive;
 
           return (
             <g 
@@ -235,7 +246,15 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
               transform={`translate(${node.x}, ${node.y})`} 
               onMouseEnter={() => setHoveredIndex(i)}
               onMouseLeave={() => setHoveredIndex(null)}
-              onClick={() => setSelectedPaper(node.paper)}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Single click sets this node as active to show the menu
+                setActiveNodeIndex(i);
+              }}
+              onDoubleClick={(e) => {
+                e.stopPropagation();
+                onNewSearch(node.paper);
+              }}
               className="cursor-pointer transition-transform duration-300 ease-out"
               style={{ zIndex: 100 + i }}
             >
@@ -253,43 +272,60 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
               <circle 
                 r={displayRadius} 
                 fill="url(#nodeGradient)"
-                stroke={isSelected ? rootColor : (isHovered ? rootColor : '#303134')} 
-                strokeWidth={isSelected ? 4 : (isHovered ? 3 : 1)}
-                filter={isHovered ? "url(#glow)" : ""}
+                stroke={isActive ? rootColor : (isHovered ? rootColor : '#303134')} 
+                strokeWidth={isActive ? 4 : (isHovered ? 3 : 1)}
+                filter={(isHovered || isActive) ? "url(#glow)" : ""}
                 className="transition-all duration-300"
               />
               
               {/* Inner Dot */}
               <circle r={displayRadius * 0.25} fill="#202124" fillOpacity={0.6} />
 
-              {/* Hover Actions */}
+              {/* Menu Popup (Visible on Hover or Single Click) */}
               <foreignObject 
                 x={-90} 
                 y={displayRadius + 10} 
                 width="180" 
-                height="120" 
-                className={`pointer-events-none transition-all duration-300 ${isHovered || isSelected ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+                height="140" 
+                className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
               >
-                <div className="flex flex-col items-center space-y-1 pointer-events-auto">
-                  <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2.5 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
+                <div className="flex flex-col items-center space-y-2 pointer-events-auto">
+                  {/* Title */}
+                  <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
                     {node.paper.title}
                   </div>
                   
-                  <div className="flex items-center gap-2">
-                    <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-0.5 rounded-full shadow-sm">
-                      {node.score}% Match
+                  {/* Action Row */}
+                  <div className="flex items-center gap-2 bg-[#303134] p-1.5 rounded-full border border-[#5f6368] shadow-lg">
+                    {/* Match Score */}
+                    <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-1 rounded-full">
+                      {node.score}%
                     </div>
                     
-                    {/* Add to Cluster Button */}
+                    <div className="w-px h-4 bg-[#5f6368]"></div>
+
+                    {/* Info Button - Shows Detail Card */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedPaper(node.paper);
+                      }}
+                      className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
+                      title="View Details"
+                    >
+                      <InfoIcon className="w-4 h-4" />
+                    </button>
+
+                    {/* Plus Button - Adds to Context */}
                     <button 
                       onClick={(e) => {
                         e.stopPropagation();
                         onAddToContext(node.paper);
                       }}
-                      className="bg-[#303134] hover:bg-[#3c4043] text-[#e8eaed] border border-[#5f6368] p-1 rounded-full shadow-sm transition-transform hover:scale-110 active:scale-95 flex items-center justify-center"
+                      className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
                       title="Add to analysis context"
                     >
-                      <PlusIcon className="w-3 h-3" />
+                      <PlusIcon className="w-4 h-4" />
                     </button>
                   </div>
                 </div>
@@ -315,7 +351,7 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
           </div>
         ) : (
           <div className="bg-[#303134]/90 backdrop-blur-md text-[#9aa0a6] text-xs font-semibold px-5 py-2.5 rounded-full border border-[#5f6368]/60 shadow-lg pointer-events-auto transform hover:scale-105 transition-transform">
-            Interactive Graph • Hover to Add (+) or Click for details
+            Double Click Node to Reset Search
           </div>
         )}
       </div>
