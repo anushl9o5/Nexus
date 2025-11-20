@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Paper } from '../types';
 import PaperCard from './PaperCard';
-import { UsersIcon, BookOpenIcon } from './Icons';
+import { UsersIcon, BookOpenIcon, PlusIcon } from './Icons';
 
 interface GraphViewProps {
-  rootTitle: string;
+  rootPapers: Paper[];
   papers: Paper[];
   type: 'correlated' | 'author';
+  onAddToContext: (paper: Paper) => void;
 }
 
-const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
+const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddToContext }) => {
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -20,7 +21,7 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
   useEffect(() => {
     let animationFrame: number;
     const animate = () => {
-      setTime((t) => t + 0.005); // Slower, more majestic movement
+      setTime((t) => t + 0.005); 
       animationFrame = requestAnimationFrame(animate);
     };
     animate();
@@ -42,21 +43,48 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
     return () => observer.disconnect();
   }, []);
 
-  // Calculate score stats for relative scaling (Normalization)
+  // Calculate score stats for relative scaling
   const scoreStats = useMemo(() => {
     const scores = papers.map(p => p.relevanceScore ?? 0);
     if (scores.length === 0) return { min: 0, max: 100, range: 100 };
     const min = Math.min(...scores);
     const max = Math.max(...scores);
-    // Prevent divide by zero if all scores are identical
     const range = max === min ? 1 : max - min; 
     return { min, max, range };
   }, [papers]);
 
-  // 1. Calculate Layout (Static Base Positions)
-  const layout = useMemo(() => {
+  const cx = dimensions.width / 2;
+  const cy = dimensions.height / 2;
+  const maxRadius = Math.min(dimensions.width, dimensions.height) * 0.45;
+  
+  // Dark Mode Monochrome Palette
+  // Root Nodes: White #ffffff
+  // Nodes: Light Grey #e8eaed
+  const rootColor = '#ffffff'; 
+  const nodeColor = '#e8eaed'; 
+
+  // 1. Calculate Root Cluster Positions
+  const rootNodes = useMemo(() => {
+    const count = rootPapers.length;
+    return rootPapers.map((paper, i) => {
+       let ox = 0;
+       let oy = 0;
+       
+       if (count === 2) {
+         ox = (i === 0 ? -25 : 25);
+       } else if (count > 2) {
+         const angle = (i / count) * Math.PI * 2;
+         ox = Math.cos(angle) * 30;
+         oy = Math.sin(angle) * 30;
+       }
+
+       return { paper, ox, oy };
+    });
+  }, [rootPapers]);
+
+  // 2. Calculate Result Nodes Layout
+  const nodes = useMemo(() => {
     const generated: { angle: number; distance: number; paper: Paper }[] = [];
-    
     papers.forEach((paper) => {
       let angle = 0;
       let distance = 0;
@@ -65,14 +93,11 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
 
       while (!valid && attempts < 150) {
         angle = Math.random() * Math.PI * 2;
-        // Pushed out further to accommodate larger Root Node
-        // 0.5 to 0.9 of max radius
-        distance = 0.50 + Math.random() * 0.40; 
+        distance = 0.55 + Math.random() * 0.35; 
         
         valid = true;
         for (const other of generated) {
           const angleDiff = Math.abs(other.angle - angle);
-          // Stricter collision check
           if (angleDiff < 0.5 && Math.abs(other.distance - distance) < 0.2) {
              valid = false;
              break;
@@ -82,19 +107,11 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
       }
       generated.push({ angle, distance, paper });
     });
-
     return generated;
   }, [papers]);
 
-  const cx = dimensions.width / 2;
-  const cy = dimensions.height / 2;
-  const maxRadius = Math.min(dimensions.width, dimensions.height) * 0.45;
-  
-  const rootColor = type === 'correlated' ? '#4f46e5' : '#db2777'; // Indigo vs Pink
-  const nodeColor = type === 'correlated' ? '#818cf8' : '#f472b6';
-
-  // 2. Calculate Animated Positions & Dynamic Sizes
-  const nodes = layout.map((node, i) => {
+  // 3. Animated Nodes with Data
+  const animatedNodes = nodes.map((node, i) => {
     const { angle, distance, paper } = node;
     
     // Drift logic
@@ -106,34 +123,19 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
     const y = cy + r * Math.sin(angle) + driftY;
     
     const score = paper.relevanceScore || 0;
-    
-    // Aggressive Normalization
-    // Map the score within the specific range of this list to a 0-1 scale
     const relativeStrength = (score - scoreStats.min) / scoreStats.range;
-    
-    // Dynamic Radius: 
-    // Root is ~70px.
-    // Papers range from 25px (weakest in list) to 55px (strongest in list).
     const radius = 25 + (relativeStrength * 30);
 
-    return {
-      ...node,
-      x,
-      y,
-      score,
-      relativeStrength,
-      radius,
-      id: i
-    };
+    return { ...node, x, y, score, relativeStrength, radius, id: i };
   });
 
   return (
-    <div className="relative w-full bg-slate-50/50" style={{ height: dimensions.height }} ref={containerRef}>
+    <div className="relative w-full bg-[#202124]" style={{ height: dimensions.height }} ref={containerRef}>
       
-      {/* Background Artifacts */}
+      {/* Background Artifacts - Subtle Monochrome Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-indigo-100/40 rounded-full blur-3xl opacity-50"></div>
-        <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-purple-100/30 rounded-full blur-3xl opacity-50"></div>
+        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-white rounded-full blur-3xl opacity-[0.02]"></div>
+        <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-[#9aa0a6] rounded-full blur-3xl opacity-[0.03]"></div>
       </div>
 
       <svg 
@@ -142,25 +144,31 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
         className="absolute top-0 left-0 z-10 pointer-events-auto overflow-visible"
       >
         <defs>
+          {/* Node gradient: White center to slightly darker outer edge */}
           <radialGradient id="nodeGradient" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stopColor="white" />
-            <stop offset="100%" stopColor="#f1f5f9" />
+            <stop offset="0%" stopColor="#ffffff" />
+            <stop offset="100%" stopColor="#bdc1c6" />
           </radialGradient>
-          <filter id="glow">
-            <feGaussianBlur stdDeviation="2.5" result="coloredBlur"/>
-            <feMerge>
-              <feMergeNode in="coloredBlur"/>
-              <feMergeNode in="SourceGraphic"/>
-            </feMerge>
+          
+          {/* Glow effect for hover */}
+          <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+             <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+             <feMerge>
+                <feMergeNode in="coloredBlur"/>
+                <feMergeNode in="SourceGraphic"/>
+             </feMerge>
           </filter>
         </defs>
 
-        {/* LAYER 1: Connections (Tentacles) */}
-        {nodes.map((node, i) => {
-          const dx = node.x - cx;
-          const dy = node.y - cy;
-          const midX = (cx + node.x) / 2;
-          const midY = (cy + node.y) / 2;
+        {/* LAYER 1: Connections (Tentacles) to Center */}
+        {animatedNodes.map((node, i) => {
+          const startX = cx;
+          const startY = cy;
+
+          const dx = node.x - startX;
+          const dy = node.y - startY;
+          const midX = (startX + node.x) / 2;
+          const midY = (startY + node.y) / 2;
           
           const curveDir = i % 2 === 0 ? 1 : -1;
           const curveStrength = 40 + Math.sin(time + i) * 15; 
@@ -172,22 +180,22 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
           const cpX = midX + perpX;
           const cpY = midY + perpY;
 
-          // Connection visual weight based on relative strength
-          const opacity = 0.2 + (node.relativeStrength * 0.5); // 0.2 - 0.7
-          const width = 2 + (node.relativeStrength * 6); // 2px - 8px
+          const opacity = 0.1 + (node.relativeStrength * 0.4);
+          const width = 2 + (node.relativeStrength * 6);
 
           return (
             <g key={`edge-${i}`}>
-               {/* Background highlight line for depth */}
+               {/* Outer glow/width for the line */}
                <path 
-                 d={`M ${cx} ${cy} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
-                 stroke="white" 
-                 strokeWidth={width + 2} 
-                 strokeOpacity={0.5}
+                 d={`M ${startX} ${startY} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
+                 stroke="#202124" 
+                 strokeWidth={width + 4} 
+                 strokeOpacity={0.8}
                  fill="none" 
                />
+               {/* Inner Core Line */}
                <path
-                d={`M ${cx} ${cy} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
+                d={`M ${startX} ${startY} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
                 stroke={rootColor}
                 strokeWidth={width}
                 strokeOpacity={opacity}
@@ -199,24 +207,26 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
           );
         })}
 
-        {/* LAYER 2: Root Node (Largest) */}
+        {/* LAYER 2: Root Cluster */}
         <g transform={`translate(${cx}, ${cy})`} className="isolate cursor-default">
-          <circle r="75" fill={rootColor} fillOpacity="0.08" className="animate-pulse" />
-          <circle r="60" fill={rootColor} fillOpacity="0.15" />
-          <circle r="45" fill="white" stroke={rootColor} strokeWidth="4" className="shadow-2xl drop-shadow-lg" />
-          <foreignObject x="-30" y="-30" width="60" height="60">
-             <div className="flex items-center justify-center h-full text-indigo-600">
-                {type === 'correlated' ? <BookOpenIcon className="w-10 h-10" /> : <UsersIcon className="w-10 h-10" />}
-             </div>
-          </foreignObject>
+           {rootNodes.map((root, idx) => (
+             <g key={`root-${idx}`} transform={`translate(${root.ox}, ${root.oy})`}>
+               <title>{root.paper.title}</title>
+               <circle r="65" fill={rootColor} fillOpacity="0.1" className="animate-pulse" />
+               <circle r="55" fill="#303134" stroke={rootColor} strokeWidth="3" className="shadow-lg" />
+               <foreignObject x="-25" y="-25" width="50" height="50">
+                  <div className="flex items-center justify-center h-full text-[#e8eaed]">
+                     {type === 'correlated' ? <BookOpenIcon className="w-8 h-8" /> : <UsersIcon className="w-8 h-8" />}
+                  </div>
+               </foreignObject>
+             </g>
+           ))}
         </g>
 
-        {/* LAYER 3: Paper Nodes (Variable Size) */}
-        {nodes.map((node, i) => {
+        {/* LAYER 3: Result Nodes */}
+        {animatedNodes.map((node, i) => {
           const isHovered = hoveredIndex === i;
           const isSelected = selectedPaper === node.paper;
-          
-          // Hover effect adds slight enlargement
           const displayRadius = isHovered ? node.radius + 5 : node.radius;
 
           return (
@@ -229,11 +239,10 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
               className="cursor-pointer transition-transform duration-300 ease-out"
               style={{ zIndex: 100 + i }}
             >
-              {/* Pulsing ring for top matches (relativeStrength > 0.8) */}
               {node.relativeStrength > 0.8 && (
                  <circle 
                     r={displayRadius + 8} 
-                    stroke={nodeColor} 
+                    stroke={rootColor} 
                     strokeWidth="2" 
                     strokeDasharray="4,4"
                     fill="none"
@@ -241,33 +250,47 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
                  />
               )}
 
-              {/* Main Circle */}
               <circle 
                 r={displayRadius} 
                 fill="url(#nodeGradient)"
-                stroke={isSelected ? rootColor : nodeColor} 
-                strokeWidth={isSelected ? 4 : (node.relativeStrength * 3 + 1)}
+                stroke={isSelected ? rootColor : (isHovered ? rootColor : '#303134')} 
+                strokeWidth={isSelected ? 4 : (isHovered ? 3 : 1)}
                 filter={isHovered ? "url(#glow)" : ""}
                 className="transition-all duration-300"
               />
               
-              {/* Relevance Dot */}
-              <circle r={displayRadius * 0.25} fill={nodeColor} fillOpacity={0.4 + node.relativeStrength * 0.6} />
+              {/* Inner Dot */}
+              <circle r={displayRadius * 0.25} fill="#202124" fillOpacity={0.6} />
 
-              {/* Hover Label */}
+              {/* Hover Actions */}
               <foreignObject 
                 x={-90} 
-                y={displayRadius + 12} 
+                y={displayRadius + 10} 
                 width="180" 
-                height="100" 
+                height="120" 
                 className={`pointer-events-none transition-all duration-300 ${isHovered || isSelected ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
               >
-                <div className="flex flex-col items-center">
-                  <div className="bg-slate-900/95 text-white text-xs font-medium text-center px-3 py-2.5 rounded-xl shadow-xl leading-tight mb-1 backdrop-blur-sm border border-white/10 relative z-50">
+                <div className="flex flex-col items-center space-y-1 pointer-events-auto">
+                  <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2.5 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
                     {node.paper.title}
                   </div>
-                  <div className="flex items-center gap-1 text-[10px] font-bold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100 shadow-sm">
-                    <span>{node.score}% Match</span>
+                  
+                  <div className="flex items-center gap-2">
+                    <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-0.5 rounded-full shadow-sm">
+                      {node.score}% Match
+                    </div>
+                    
+                    {/* Add to Cluster Button */}
+                    <button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onAddToContext(node.paper);
+                      }}
+                      className="bg-[#303134] hover:bg-[#3c4043] text-[#e8eaed] border border-[#5f6368] p-1 rounded-full shadow-sm transition-transform hover:scale-110 active:scale-95 flex items-center justify-center"
+                      title="Add to analysis context"
+                    >
+                      <PlusIcon className="w-3 h-3" />
+                    </button>
                   </div>
                 </div>
               </foreignObject>
@@ -283,7 +306,7 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
             <div className="relative">
               <button 
                 onClick={(e) => { e.stopPropagation(); setSelectedPaper(null); }}
-                className="absolute -top-3 -right-3 bg-slate-800 text-white rounded-full p-1.5 hover:bg-slate-700 shadow-lg z-50 transition-transform hover:scale-110 border-2 border-white"
+                className="absolute -top-3 -right-3 bg-[#303134] text-[#e8eaed] rounded-full p-1.5 hover:bg-[#3c4043] shadow-lg z-50 transition-transform hover:scale-110 border border-[#5f6368]"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
@@ -291,8 +314,8 @@ const GraphView: React.FC<GraphViewProps> = ({ rootTitle, papers, type }) => {
             </div>
           </div>
         ) : (
-          <div className="bg-white/90 backdrop-blur-md text-slate-500 text-xs font-semibold px-5 py-2.5 rounded-full border border-slate-200/60 shadow-lg pointer-events-auto transform hover:scale-105 transition-transform">
-            Interactive Graph • Click nodes for details
+          <div className="bg-[#303134]/90 backdrop-blur-md text-[#9aa0a6] text-xs font-semibold px-5 py-2.5 rounded-full border border-[#5f6368]/60 shadow-lg pointer-events-auto transform hover:scale-105 transition-transform">
+            Interactive Graph • Hover to Add (+) or Click for details
           </div>
         )}
       </div>

@@ -1,43 +1,68 @@
-import React, { useState, useRef } from 'react';
-import { analyzePaper } from './services/geminiService';
-import { SearchState, TabState, ResearchResponse } from './types';
+import React, { useState, useRef, useEffect } from 'react';
+import { analyzePaper, getPaperSuggestions } from './services/geminiService';
+import { SearchState, TabState, Paper } from './types';
 import PaperCard from './components/PaperCard';
 import GraphView from './components/GraphView';
-import { SearchIcon, SparklesIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon } from './components/Icons';
-
-// Simple animation utility class
-const FADE_IN_UP = "animate-[fadeInUp_0.5s_ease-out_forwards]";
+import { SearchIcon, SparklesIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon } from './components/Icons';
 
 type ViewMode = 'LIST' | 'GRAPH';
 
 export default function App() {
   const [query, setQuery] = useState('');
+  // We now track a list of papers that form the "Context" of the search
+  const [contextPapers, setContextPapers] = useState<Paper[]>([]);
+  
   const [state, setState] = useState<SearchState>({
     isLoading: false,
     error: null,
     data: null,
   });
   const [activeTab, setActiveTab] = useState<TabState>(TabState.CORRELATED);
-  const [viewMode, setViewMode] = useState<ViewMode>('LIST');
+  const [viewMode, setViewMode] = useState<ViewMode>('GRAPH'); // Default to Graph
   const resultsRef = useRef<HTMLDivElement>(null);
+  
+  // Autocomplete State
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!query.trim()) return;
+  useEffect(() => {
+    const debounceTimer = setTimeout(async () => {
+      if (query.trim().length >= 3 && !state.isLoading) {
+        setIsFetchingSuggestions(true);
+        try {
+          const results = await getPaperSuggestions(query);
+          setSuggestions(results);
+          setShowSuggestions(true);
+        } catch (error) {
+          console.error("Failed to fetch suggestions", error);
+        } finally {
+          setIsFetchingSuggestions(false);
+        }
+      } else {
+        setSuggestions([]);
+        setShowSuggestions(false);
+      }
+    }, 600); 
 
+    return () => clearTimeout(debounceTimer);
+  }, [query, state.isLoading]);
+
+  const executeSearch = async (papers: Paper[]) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
-
+    
     try {
-      const result = await analyzePaper(query);
+      const paperTitles = papers.map(p => p.title);
+      const result = await analyzePaper(paperTitles);
+      
       setState({
         isLoading: false,
         error: null,
         data: result,
       });
-      // Small delay to let DOM update before scrolling
-      setTimeout(() => {
-        resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }, 100);
+
+      // Scroll to top when results load
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     } catch (error) {
       setState({
         isLoading: false,
@@ -47,37 +72,71 @@ export default function App() {
     }
   };
 
-  const renderContent = () => {
+  const handleInitialSearch = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!query.trim()) return;
+
+    setShowSuggestions(false);
+    setSuggestions([]);
+
+    // Create a partial "Paper" object for the root from the query
+    const initialRoot: Paper = {
+      title: query,
+      authors: [], 
+      year: '', 
+      summary: 'Initial Query', 
+      reason: 'Root', 
+      relevanceScore: 100 
+    };
+
+    const newContext = [initialRoot];
+    setContextPapers(newContext);
+    await executeSearch(newContext);
+  };
+
+  const handleSelectSuggestion = (suggestion: string) => {
+    setQuery(suggestion);
+    setSuggestions([]);
+    setShowSuggestions(false);
+  };
+
+  const handleAddToContext = async (paper: Paper) => {
+    // Prevent adding duplicates
+    if (contextPapers.some(p => p.title === paper.title)) return;
+    
+    const newContext = [...contextPapers, paper];
+    setContextPapers(newContext);
+    await executeSearch(newContext);
+  };
+
+  // Determine if we are in the "Landing Page" state
+  const isLanding = !state.data && !state.isLoading && !state.error;
+
+  const renderResults = () => {
     if (state.isLoading) {
       return (
         <div className="flex flex-col items-center justify-center py-20 space-y-6">
           <div className="relative w-20 h-20">
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-100 rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-indigo-600 rounded-full border-t-transparent animate-spin"></div>
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#5f6368] rounded-full"></div>
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#e8eaed] rounded-full border-t-transparent animate-spin"></div>
           </div>
-          <p className="text-slate-500 animate-pulse font-medium">Analyzing literature graph...</p>
+          <p className="text-[#9aa0a6] animate-pulse font-medium">
+             {contextPapers.length > 1 ? 'Synthesizing cluster connections...' : 'Analyzing literature graph...'}
+          </p>
         </div>
       );
     }
 
     if (state.error) {
       return (
-        <div className="bg-red-50 border border-red-100 text-red-600 p-6 rounded-xl text-center max-w-md mx-auto mt-10">
-          <p className="font-semibold">Oops!</p>
-          <p>{state.error}</p>
+        <div className="bg-[#3c4043] border border-[#5f6368] text-[#e8eaed] p-6 rounded-xl text-center max-w-md mx-auto mt-10">
+          <p className="font-semibold text-white">Oops!</p>
+          <p className="text-[#9aa0a6]">{state.error}</p>
         </div>
       );
     }
 
-    if (!state.data) {
-      return (
-        <div className="mt-20 text-center opacity-40 pointer-events-none select-none">
-          <SparklesIcon className="w-24 h-24 mx-auto text-slate-300 mb-4" />
-          <h2 className="text-2xl font-bold text-slate-400">Start your discovery</h2>
-          <p className="text-slate-400 max-w-sm mx-auto mt-2">Enter a paper title or DOI above to map its connections.</p>
-        </div>
-      );
-    }
+    if (!state.data) return null;
 
     const papersToShow = activeTab === TabState.CORRELATED 
       ? state.data.correlatedPapers 
@@ -86,24 +145,36 @@ export default function App() {
     return (
       <div ref={resultsRef} className="animate-fade-in pb-20">
         {/* Context Header */}
-        <div className="mb-8 bg-indigo-900 text-white rounded-2xl p-6 shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-5 rounded-full transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-          <h2 className="text-xs font-bold uppercase tracking-widest text-indigo-200 mb-2">Analyzed Subject</h2>
-          <p className="text-xl md:text-2xl font-serif font-medium leading-snug">
-            "{state.data.originalPaperContext}"
+        <div className="mb-8 bg-[#303134] text-[#e8eaed] rounded-2xl p-6 shadow-lg relative overflow-hidden border border-[#5f6368]/30">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-white opacity-[0.02] rounded-full transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
+          <h2 className="text-xs font-bold uppercase tracking-widest text-[#9aa0a6] mb-2">
+            {contextPapers.length > 1 ? 'Cluster Analysis' : 'Analyzed Subject'}
+          </h2>
+          <p className="text-xl md:text-2xl font-serif font-medium leading-snug text-white">
+            {state.data.originalPaperContext}
           </p>
+          
+          {contextPapers.length > 1 && (
+            <div className="mt-4 flex flex-wrap gap-2">
+               {contextPapers.map((p, i) => (
+                 <span key={i} className="text-xs bg-[#202124] border border-[#5f6368] px-2 py-1 rounded-lg text-[#9aa0a6]">
+                   {p.title}
+                 </span>
+               ))}
+            </div>
+          )}
         </div>
 
         {/* Controls Row */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 sticky top-4 z-30">
           {/* Tabs */}
-          <div className="bg-slate-50/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-slate-200 w-full md:w-auto">
+          <div className="bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#5f6368]/30 w-full md:w-auto">
             <button
               onClick={() => setActiveTab(TabState.CORRELATED)}
               className={`flex-1 md:flex-none flex items-center justify-center py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === TabState.CORRELATED
-                  ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#9aa0a6] hover:text-[#e8eaed] hover:bg-[#3c4043]'
               }`}
             >
               <BookOpenIcon className="w-4 h-4 mr-2" />
@@ -113,8 +184,8 @@ export default function App() {
               onClick={() => setActiveTab(TabState.AUTHOR_CONTEXT)}
               className={`flex-1 md:flex-none flex items-center justify-center py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === TabState.AUTHOR_CONTEXT
-                  ? 'bg-white text-indigo-600 shadow-sm ring-1 ring-black/5'
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#9aa0a6] hover:text-[#e8eaed] hover:bg-[#3c4043]'
               }`}
             >
               <UsersIcon className="w-4 h-4 mr-2" />
@@ -123,13 +194,13 @@ export default function App() {
           </div>
 
           {/* View Toggle */}
-          <div className="bg-slate-50/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-slate-200">
+          <div className="bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#5f6368]/30">
             <button
               onClick={() => setViewMode('LIST')}
               className={`p-2 rounded-lg transition-all duration-200 ${
                 viewMode === 'LIST'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
+                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#9aa0a6] hover:text-[#e8eaed]'
               }`}
               title="List View"
             >
@@ -139,8 +210,8 @@ export default function App() {
               onClick={() => setViewMode('GRAPH')}
               className={`p-2 rounded-lg transition-all duration-200 ${
                 viewMode === 'GRAPH'
-                  ? 'bg-white text-indigo-600 shadow-sm'
-                  : 'text-slate-400 hover:text-slate-600'
+                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#9aa0a6] hover:text-[#e8eaed]'
               }`}
               title="Graph View"
             >
@@ -153,20 +224,31 @@ export default function App() {
         {viewMode === 'LIST' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
             {papersToShow.map((paper, idx) => (
-              <PaperCard key={idx} paper={paper} index={idx} />
+              <div key={idx} className="relative group">
+                <PaperCard paper={paper} index={idx} />
+                 {/* Hover Add Button for List View as well */}
+                 <button 
+                    onClick={() => handleAddToContext(paper)}
+                    className="absolute top-4 right-4 bg-[#202124] text-[#e8eaed] border border-[#5f6368] p-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[#303134] hover:scale-110 hover:border-[#e8eaed]"
+                    title="Add to analysis context"
+                 >
+                   <PlusIcon className="w-4 h-4" />
+                 </button>
+              </div>
             ))}
           </div>
         ) : (
-          <div className="bg-slate-50 rounded-2xl border border-slate-200 shadow-inner min-h-[500px] flex items-center justify-center overflow-hidden animate-fade-in">
+          <div className="bg-[#202124] rounded-2xl border border-[#5f6368]/30 shadow-inner min-h-[500px] flex items-center justify-center overflow-hidden animate-fade-in relative">
              <GraphView 
-               rootTitle={state.data.originalPaperContext}
+               rootPapers={contextPapers}
                papers={papersToShow}
                type={activeTab === TabState.CORRELATED ? 'correlated' : 'author'}
+               onAddToContext={handleAddToContext}
              />
           </div>
         )}
         
-        <div className="mt-12 text-center text-slate-400 text-xs">
+        <div className="mt-12 text-center text-[#9aa0a6] text-xs">
           AI-generated results. Verify details on Google Scholar.
         </div>
       </div>
@@ -174,67 +256,118 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#f8fafc]">
+    <div className="min-h-screen flex flex-col bg-[#202124] text-[#e8eaed]">
       {/* Navbar */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-20">
-        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
-          <div className="flex items-center space-x-2">
-            <div className="bg-indigo-600 p-1.5 rounded-lg">
-              <BookOpenIcon className="w-5 h-5 text-white" />
+      <header className="bg-[#303134] border-b border-[#5f6368] sticky top-0 z-50">
+        {/* Changed to justify-center to center align the title */}
+        <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-center">
+          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => {
+              setContextPapers([]);
+              setState({ isLoading: false, error: null, data: null });
+              setQuery('');
+          }}>
+            <div className="bg-[#e8eaed] p-1.5 rounded-lg">
+              <BookOpenIcon className="w-5 h-5 text-[#202124]" />
             </div>
-            <span className="text-xl font-bold text-slate-900 tracking-tight">ResearchNexus</span>
+            <span className="text-xl font-bold text-[#e8eaed] tracking-tight">ResearchNexus</span>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="flex-grow px-4">
-        <div className="max-w-4xl mx-auto w-full pt-12 md:pt-20 pb-10">
-          
-          {/* Hero / Search Area */}
-          <div className={`transition-all duration-500 ease-in-out ${state.data ? '' : 'translate-y-[10vh]'}`}>
-            <div className="text-center mb-10 space-y-4">
-              {!state.data && (
-                <>
-                  <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                    Find connected <span className="text-indigo-600">science.</span>
-                  </h1>
-                  <p className="text-lg text-slate-600 max-w-xl mx-auto">
-                    Enter a paper title to discover strongly correlated works and deep-dives into the author's related research.
-                  </p>
-                </>
-              )}
-            </div>
+      <main className="flex-grow flex flex-col relative">
+        
+        {/* Landing Page "Start Discovery" Background */}
+        {isLanding && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center pb-40 pointer-events-none select-none z-0">
+            {/* Updated Animation Class */}
+            <SparklesIcon className="w-20 h-20 text-[#5f6368] mb-6 animate-fidget-spin" />
+            <h2 className="text-2xl font-bold text-[#9aa0a6]">Start your discovery</h2>
+            <p className="text-[#5f6368] mt-2 text-center max-w-md px-4">Enter a paper title to map its connections.</p>
+          </div>
+        )}
 
-            <form onSubmit={handleSearch} className="relative max-w-2xl mx-auto group z-20">
+        {/* Main Layout Container 
+            - If isLanding: flex-grow pushes content to bottom (justify-end)
+            - If results: Standard flow (pt-8)
+        */}
+        <div className={`max-w-4xl mx-auto w-full px-4 flex flex-col transition-all duration-500 ${isLanding ? 'flex-grow justify-end pb-12' : 'pt-8'}`}>
+          
+          {/* Search Bar Area */}
+          <div className="relative z-40 w-full max-w-2xl mx-auto">
+            <form onSubmit={handleInitialSearch} className="relative z-10">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <SearchIcon className="h-6 w-6 text-slate-400 group-focus-within:text-indigo-500 transition-colors" />
+                <SearchIcon className="h-6 w-6 text-[#9aa0a6] group-focus-within:text-[#e8eaed] transition-colors" />
               </div>
               <input
                 type="text"
                 value={query}
-                onChange={(e) => setQuery(e.target.value)}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  if (e.target.value.length < 3) setShowSuggestions(false);
+                }}
+                onFocus={() => {
+                  if (suggestions.length > 0 && query.length >= 3) setShowSuggestions(true);
+                }}
                 placeholder="e.g. Attention Is All You Need"
-                className="block w-full pl-12 pr-16 py-4 bg-white border-2 border-slate-200 rounded-2xl text-lg placeholder-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all shadow-xl shadow-slate-200/50"
+                className="block w-full pl-12 pr-16 py-4 bg-[#303134] text-[#e8eaed] border-2 border-transparent rounded-2xl text-lg placeholder-[#9aa0a6] focus:outline-none focus:border-[#e8eaed] focus:ring-4 focus:ring-[#e8eaed]/10 transition-all shadow-xl shadow-black/20"
               />
               <button
                 type="submit"
                 disabled={state.isLoading || !query.trim()}
-                className="absolute right-2 top-2 bottom-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="absolute right-2 top-2 bottom-2 bg-[#e8eaed] hover:bg-white text-[#202124] px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {state.isLoading ? (
-                  <span className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                  <span className="w-5 h-5 border-2 border-[#202124]/30 border-t-[#202124] rounded-full animate-spin"></span>
                 ) : (
                   <ArrowRightIcon className="w-5 h-5" />
                 )}
               </button>
             </form>
+
+            {/* Autocomplete Dropdown */}
+            {(showSuggestions || isFetchingSuggestions) && query.length >= 3 && (
+              <div className={`absolute left-0 right-0 bg-[#303134] rounded-xl border border-[#5f6368]/50 shadow-xl overflow-hidden animate-fade-in-up z-50 ${isLanding ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+                {isFetchingSuggestions && suggestions.length === 0 && (
+                  <div className="p-4 text-center text-[#9aa0a6] text-sm flex items-center justify-center">
+                      <span className="w-4 h-4 border-2 border-[#e8eaed] border-t-transparent rounded-full animate-spin mr-2"></span>
+                      Finding papers...
+                  </div>
+                )}
+                
+                {!isFetchingSuggestions && suggestions.length === 0 && (
+                  <div className="p-4 text-center text-[#9aa0a6] text-sm">
+                      No suggestions found.
+                  </div>
+                )}
+
+                {suggestions.map((suggestion, index) => (
+                  <button
+                    key={index}
+                    type="button"
+                    onClick={() => handleSelectSuggestion(suggestion)}
+                    className="w-full text-left px-4 py-3 text-[#e8eaed] hover:bg-[#3c4043] transition-colors border-b border-[#5f6368]/30 last:border-0 flex items-center group"
+                  >
+                    <BookOpenIcon className="w-4 h-4 mr-3 text-[#9aa0a6] group-hover:text-[#e8eaed]" />
+                    <span className="truncate font-medium">{suggestion}</span>
+                  </button>
+                ))}
+                
+                {suggestions.length > 0 && (
+                  <div className="px-4 py-2 bg-[#202124] text-right text-[10px] text-[#9aa0a6] uppercase tracking-wider font-bold">
+                    Suggestions
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
-          {/* Results Section */}
-          <div className="mt-8">
-            {renderContent()}
-          </div>
+          {/* Results Section (Only renders if not landing) */}
+          {!isLanding && (
+            <div className="mt-8 w-full">
+              {renderResults()}
+            </div>
+          )}
 
         </div>
       </main>
@@ -243,7 +376,7 @@ export default function App() {
         @keyframes fadeInUp {
           from {
             opacity: 0;
-            transform: translateY(20px);
+            transform: translateY(10px);
           }
           to {
             opacity: 1;
@@ -251,8 +384,22 @@ export default function App() {
           }
         }
         .animate-fade-in-up {
-          animation: fadeInUp 0.6s ease-out forwards;
-          opacity: 0;
+          animation: fadeInUp 0.2s ease-out forwards;
+        }
+        
+        /* Fidget Spin Animation: 
+           0-20%: Static
+           20-60%: Rapid acceleration to 720deg (2 full spins)
+           60-100%: Hold
+        */
+        @keyframes fidget-spin {
+          0% { transform: rotate(0deg); }
+          20% { transform: rotate(0deg); }
+          60% { transform: rotate(720deg); }
+          100% { transform: rotate(720deg); }
+        }
+        .animate-fidget-spin {
+          animation: fidget-spin 4s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
         }
       `}</style>
     </div>

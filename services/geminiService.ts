@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, SchemaType } from "@google/genai";
 import { ResearchResponse } from "../types";
 
@@ -26,7 +27,7 @@ const paperSchema = {
 const researchResponseSchema = {
   type: Type.OBJECT,
   properties: {
-    originalPaperContext: { type: Type.STRING, description: "A brief, one-sentence identification of the input paper provided by the user." },
+    originalPaperContext: { type: Type.STRING, description: "A brief, one-sentence identification of the combined topic or intersection of the input papers." },
     correlatedPapers: {
       type: Type.ARRAY,
       items: paperSchema,
@@ -41,17 +42,51 @@ const researchResponseSchema = {
   required: ["originalPaperContext", "correlatedPapers", "authorContextPapers"]
 };
 
-export const analyzePaper = async (query: string): Promise<ResearchResponse> => {
+const suggestionSchema = {
+  type: Type.ARRAY,
+  items: { type: Type.STRING },
+  description: "List of suggested paper titles"
+};
+
+export const getPaperSuggestions = async (query: string): Promise<string[]> => {
+  if (!query || query.length < 3) return [];
+  
   try {
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: `I have a research paper inquiry: "${query}". 
-      
-      Please identify this paper (or the topic if it's general) and provide:
-      1. A list of 5 strongly correlated papers (direct follow-ups, rebuttals, or foundational papers in the exact same niche).
-      2. A list of 5 other papers specifically from the SAME author(s) or the SAME research lab/group that cover similar or adjacent work.
-      
-      Ensure the papers are real, publicly known academic works. Provide a relevance score (0-100) for how closely tied they are to the original.`,
+      contents: `Provide exactly 5 real, publicly known academic research paper titles that match or are relevant to the partial search query: "${query}". 
+      Return ONLY a JSON array of strings. Do not include fake papers.`,
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: suggestionSchema,
+      },
+    });
+
+    const text = response.text;
+    if (!text) return [];
+    return JSON.parse(text) as string[];
+  } catch (error) {
+    console.error("Autocomplete Error:", error);
+    return [];
+  }
+};
+
+export const analyzePaper = async (paperTitles: string[]): Promise<ResearchResponse> => {
+  try {
+    const contextString = paperTitles.map((t, i) => `${i + 1}. "${t}"`).join("\n");
+    const prompt = `I have a research context consisting of the following paper(s):
+${contextString}
+
+Please analyze this collection as a research cluster. 
+1. Briefly identify the common theme, intersection, or progression represented by this cluster.
+2. Provide a list of 5 strongly correlated papers that are relevant to this *combined* context (e.g., connecting the dots between them, or future work based on both).
+3. Provide a list of 5 other papers from the SAME author(s) or labs involved in these papers, specifically looking for other works where these researchers collaborated or explored adjacent topics.
+
+Ensure the papers are real, publicly known academic works. Provide a relevance score (0-100) for how closely tied they are to this cluster.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
       config: {
         responseMimeType: "application/json",
         responseSchema: researchResponseSchema,

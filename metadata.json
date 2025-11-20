@@ -1,5 +1,5 @@
 {
-  "name": "ResearchNexus",
+  "name": "Nexus - Academia Companion",
   "description": "A research assistant that connects you with correlated academic papers and author-centric related works using Gemini.",
   "requestFramePermissions": []
 }
