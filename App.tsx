@@ -1,9 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { analyzePaper, getPaperSuggestions } from './services/geminiService';
 import { SearchState, TabState, Paper } from './types';
 import PaperCard from './components/PaperCard';
 import GraphView from './components/GraphView';
-import { SearchIcon, SparklesIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon } from './components/Icons';
+import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon } from './components/Icons';
 
 type ViewMode = 'LIST' | 'GRAPH';
 
@@ -25,10 +26,19 @@ export default function App() {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [isFetchingSuggestions, setIsFetchingSuggestions] = useState(false);
+  
+  // Ref to prevent suggestion fetch loop when selecting an item
+  const skipSuggestionFetch = useRef(false);
 
   useEffect(() => {
+    // If we just selected a suggestion, don't trigger a new search immediately
+    if (skipSuggestionFetch.current) {
+      skipSuggestionFetch.current = false;
+      return;
+    }
+
     const debounceTimer = setTimeout(async () => {
-      if (query.trim().length >= 3 && !state.isLoading) {
+      if (query.trim().length >= 3) {
         setIsFetchingSuggestions(true);
         try {
           const results = await getPaperSuggestions(query);
@@ -46,7 +56,7 @@ export default function App() {
     }, 600); 
 
     return () => clearTimeout(debounceTimer);
-  }, [query, state.isLoading]);
+  }, [query]); // Removed state.isLoading to prevent re-opening dropdown when search completes
 
   const executeSearch = async (papers: Paper[]) => {
     setState(prev => ({ ...prev, isLoading: true, error: null }));
@@ -95,6 +105,7 @@ export default function App() {
   };
 
   const handleSelectSuggestion = (suggestion: string) => {
+    skipSuggestionFetch.current = true; // Skip the next useEffect fetch to prevent re-opening
     setQuery(suggestion);
     setSuggestions([]);
     setShowSuggestions(false);
@@ -277,8 +288,10 @@ export default function App() {
         {/* Landing Page "Start Discovery" Background */}
         {isLanding && (
           <div className="absolute inset-0 flex flex-col items-center justify-center pb-40 pointer-events-none select-none z-0">
-            {/* Updated Animation Class */}
-            <SparklesIcon className="w-20 h-20 text-[#5f6368] mb-6 animate-fidget-spin" />
+            {/* Sparkle Animation Restored */}
+            <div className="mb-6 text-[#5f6368]">
+              <SparklesIcon className="w-24 h-24 animate-fidget-spin" />
+            </div>
             <h2 className="text-2xl font-bold text-[#9aa0a6]">Start your discovery</h2>
             <p className="text-[#5f6368] mt-2 text-center max-w-md px-4">Enter a paper title to map its connections.</p>
           </div>
@@ -384,19 +397,18 @@ export default function App() {
           animation: fadeInUp 0.2s ease-out forwards;
         }
         
-        /* Fidget Spin Animation: 
-           0-20%: Static
-           20-60%: Rapid acceleration to 720deg (2 full spins)
-           60-100%: Hold
-        */
+        /* Fidget Spinner Style Animation: Rapid acceleration/deceleration */
         @keyframes fidget-spin {
           0% { transform: rotate(0deg); }
-          20% { transform: rotate(0deg); }
-          60% { transform: rotate(720deg); }
-          100% { transform: rotate(720deg); }
+          10% { transform: rotate(0deg); }
+          50% { transform: rotate(360deg); }
+          90% { transform: rotate(360deg); }
+          100% { transform: rotate(360deg); }
         }
+
         .animate-fidget-spin {
-          animation: fidget-spin 4s cubic-bezier(0.4, 0.0, 0.2, 1) infinite;
+          /* Sharp curve for acceleration feeling */
+          animation: fidget-spin 2.5s cubic-bezier(0.85, 0, 0.15, 1) infinite;
         }
       `}</style>
     </div>

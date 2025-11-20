@@ -1,5 +1,5 @@
 
-import { GoogleGenAI, Type, SchemaType } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
 import { ResearchResponse } from "../types";
 
 // Initialize the client with the system environment key
