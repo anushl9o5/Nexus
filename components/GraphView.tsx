@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Paper } from '../types';
 import PaperCard from './PaperCard';
@@ -232,107 +231,118 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
         </g>
 
         {/* LAYER 3: Result Nodes */}
-        {animatedNodes.map((node, i) => {
-          const isHovered = hoveredIndex === i;
-          const isActive = activeNodeIndex === i;
-          const isSelected = selectedPaper === node.paper;
-          
-          const displayRadius = (isHovered || isActive) ? node.radius + 5 : node.radius;
-          const showMenu = isHovered || isActive;
+        {/* Sort nodes so hovered/active ones are rendered last (on top) */}
+        {[...animatedNodes]
+          .sort((a, b) => {
+            const aIsActive = a.id === activeNodeIndex || a.id === hoveredIndex;
+            const bIsActive = b.id === activeNodeIndex || b.id === hoveredIndex;
+            
+            if (aIsActive && !bIsActive) return 1;
+            if (!aIsActive && bIsActive) return -1;
+            return a.id - b.id; // Maintain stable order for non-active nodes
+          })
+          .map((node) => {
+            // Note: node.id is the original index, used for stability
+            const isHovered = hoveredIndex === node.id;
+            const isActive = activeNodeIndex === node.id;
+            const isSelected = selectedPaper === node.paper;
+            
+            const displayRadius = (isHovered || isActive) ? node.radius + 5 : node.radius;
+            const showMenu = isHovered || isActive;
 
-          return (
-            <g 
-              key={`node-${i}`} 
-              transform={`translate(${node.x}, ${node.y})`} 
-              onMouseEnter={() => setHoveredIndex(i)}
-              onMouseLeave={() => setHoveredIndex(null)}
-              onClick={(e) => {
-                e.stopPropagation();
-                // Single click sets this node as active to show the menu
-                setActiveNodeIndex(i);
-              }}
-              onDoubleClick={(e) => {
-                e.stopPropagation();
-                onNewSearch(node.paper);
-              }}
-              className="cursor-pointer transition-transform duration-300 ease-out"
-              style={{ zIndex: 100 + i }}
-            >
-              {node.relativeStrength > 0.8 && (
-                 <circle 
-                    r={displayRadius + 8} 
-                    stroke={rootColor} 
-                    strokeWidth="2" 
-                    strokeDasharray="4,4"
-                    fill="none"
-                    className="opacity-30 animate-spin-slow"
-                 />
-              )}
-
-              <circle 
-                r={displayRadius} 
-                fill="url(#nodeGradient)"
-                stroke={isActive ? rootColor : (isHovered ? rootColor : '#303134')} 
-                strokeWidth={isActive ? 4 : (isHovered ? 3 : 1)}
-                filter={(isHovered || isActive) ? "url(#glow)" : ""}
-                className="transition-all duration-300"
-              />
-              
-              {/* Inner Dot */}
-              <circle r={displayRadius * 0.25} fill="#202124" fillOpacity={0.6} />
-
-              {/* Menu Popup (Visible on Hover or Single Click) */}
-              <foreignObject 
-                x={-90} 
-                y={displayRadius + 10} 
-                width="180" 
-                height="140" 
-                className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+            return (
+              <g 
+                key={`node-${node.id}`} 
+                transform={`translate(${node.x}, ${node.y})`} 
+                onMouseEnter={() => setHoveredIndex(node.id)}
+                onMouseLeave={() => setHoveredIndex(null)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveNodeIndex(node.id);
+                }}
+                onDoubleClick={(e) => {
+                  e.stopPropagation();
+                  onNewSearch(node.paper);
+                }}
+                className="cursor-pointer transition-transform duration-300 ease-out"
+                style={{ zIndex: 100 + node.id }}
               >
-                <div className="flex flex-col items-center space-y-2 pointer-events-auto">
-                  {/* Title */}
-                  <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
-                    {node.paper.title}
-                  </div>
-                  
-                  {/* Action Row */}
-                  <div className="flex items-center gap-2 bg-[#303134] p-1.5 rounded-full border border-[#5f6368] shadow-lg">
-                    {/* Match Score */}
-                    <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-1 rounded-full">
-                      {node.score}%
+                {node.relativeStrength > 0.8 && (
+                  <circle 
+                      r={displayRadius + 8} 
+                      stroke={rootColor} 
+                      strokeWidth="2" 
+                      strokeDasharray="4,4"
+                      fill="none"
+                      className="opacity-30 animate-spin-slow"
+                  />
+                )}
+
+                <circle 
+                  r={displayRadius} 
+                  fill="url(#nodeGradient)"
+                  stroke={isActive ? rootColor : (isHovered ? rootColor : '#303134')} 
+                  strokeWidth={isActive ? 4 : (isHovered ? 3 : 1)}
+                  filter={(isHovered || isActive) ? "url(#glow)" : ""}
+                  className="transition-all duration-300"
+                />
+                
+                {/* Inner Dot */}
+                <circle r={displayRadius * 0.25} fill="#202124" fillOpacity={0.6} />
+
+                {/* Menu Popup (Visible on Hover or Single Click) */}
+                <foreignObject 
+                  x={-90} 
+                  y={displayRadius + 10} 
+                  width="180" 
+                  height="140" 
+                  className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+                >
+                  <div className="flex flex-col items-center space-y-2 pointer-events-auto">
+                    {/* Title */}
+                    <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
+                      {node.paper.title}
                     </div>
                     
-                    <div className="w-px h-4 bg-[#5f6368]"></div>
+                    {/* Action Row */}
+                    <div className="flex items-center gap-2 bg-[#303134] p-1.5 rounded-full border border-[#5f6368] shadow-lg">
+                      {/* Match Score */}
+                      <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-1 rounded-full">
+                        {node.score}%
+                      </div>
+                      
+                      <div className="w-px h-4 bg-[#5f6368]"></div>
 
-                    {/* Info Button - Shows Detail Card */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedPaper(node.paper);
-                      }}
-                      className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
-                      title="View Details"
-                    >
-                      <InfoIcon className="w-4 h-4" />
-                    </button>
+                      {/* Info Button - Shows Detail Card */}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedPaper(node.paper);
+                        }}
+                        className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
+                        title="View Details"
+                      >
+                        <InfoIcon className="w-4 h-4" />
+                      </button>
 
-                    {/* Plus Button - Adds to Context */}
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddToContext(node.paper);
-                      }}
-                      className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
-                      title="Add to analysis context"
-                    >
-                      <PlusIcon className="w-4 h-4" />
-                    </button>
+                      {/* Plus Button - Adds to Context */}
+                      <button 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onAddToContext(node.paper);
+                        }}
+                        className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
+                        title="Add to analysis context"
+                      >
+                        <PlusIcon className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
-              </foreignObject>
-            </g>
-          );
-        })}
+                </foreignObject>
+              </g>
+            );
+          })
+        }
       </svg>
 
       {/* Overlay Details Card */}
@@ -346,7 +356,11 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
-              <PaperCard paper={selectedPaper} index={0} />
+              <PaperCard 
+                paper={selectedPaper} 
+                index={0} 
+                className="max-h-[60vh] overflow-y-auto shadow-2xl border-t border-[#5f6368] custom-scrollbar" 
+              />
             </div>
           </div>
         ) : (
@@ -364,6 +378,16 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
         .animate-spin-slow {
           animation: spin-slow 20s linear infinite;
           transform-origin: center;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+          width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+          background: #303134;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+          background: #5f6368;
+          border-radius: 3px;
         }
       `}</style>
     </div>

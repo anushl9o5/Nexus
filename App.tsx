@@ -4,7 +4,7 @@ import { analyzePaper, getPaperSuggestions } from './services/geminiService';
 import { SearchState, TabState, Paper } from './types';
 import PaperCard from './components/PaperCard';
 import GraphView from './components/GraphView';
-import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon, ChevronDownIcon, HistoryIcon } from './components/Icons';
+import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon, ChevronDownIcon, HistoryIcon, ChevronLeftIcon, ChevronRightIcon } from './components/Icons';
 
 type ViewMode = 'LIST' | 'GRAPH';
 
@@ -24,6 +24,11 @@ export default function App() {
   });
   const [activeTab, setActiveTab] = useState<TabState>(TabState.CORRELATED);
   const [viewMode, setViewMode] = useState<ViewMode>('GRAPH'); // Default to Graph
+  
+  // List View (Carousel) State
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const touchStartX = useRef<number | null>(null);
+  const touchEndX = useRef<number | null>(null);
   
   // Dropdown state for the context summary
   const [isContextExpanded, setIsContextExpanded] = useState(false);
@@ -65,6 +70,11 @@ export default function App() {
 
     return () => clearTimeout(debounceTimer);
   }, [query]); // Removed state.isLoading to prevent re-opening dropdown when search completes
+
+  // Reset card index when tab or data changes
+  useEffect(() => {
+    setCurrentCardIndex(0);
+  }, [activeTab, state.data]);
 
   const addToHistory = (newContext: Paper[]) => {
     setSearchHistory(prev => {
@@ -164,6 +174,42 @@ export default function App() {
     addToHistory(newContext); // Add to history
     setContextPapers(newContext);
     await executeSearch(newContext);
+  };
+
+  // --- Carousel Logic ---
+  const handleNextCard = () => {
+    const papersToShow = activeTab === TabState.CORRELATED 
+      ? state.data?.correlatedPapers || []
+      : state.data?.authorContextPapers || [];
+      
+    if (currentCardIndex < papersToShow.length - 1) {
+      setCurrentCardIndex(prev => prev + 1);
+    }
+  };
+
+  const handlePrevCard = () => {
+    if (currentCardIndex > 0) {
+      setCurrentCardIndex(prev => prev - 1);
+    }
+  };
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    touchEndX.current = null;
+    touchStartX.current = e.targetTouches[0].clientX;
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    touchEndX.current = e.targetTouches[0].clientX;
+  };
+
+  const onTouchEnd = () => {
+    if (!touchStartX.current || !touchEndX.current) return;
+    const distance = touchStartX.current - touchEndX.current;
+    const isLeftSwipe = distance > 50;
+    const isRightSwipe = distance < -50;
+
+    if (isLeftSwipe) handleNextCard();
+    if (isRightSwipe) handlePrevCard();
   };
 
   // Determine if we are in the "Landing Page" state
@@ -294,20 +340,72 @@ export default function App() {
 
         {/* View Render */}
         {viewMode === 'LIST' ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in-up">
-            {papersToShow.map((paper, idx) => (
-              <div key={idx} className="relative group">
-                <PaperCard paper={paper} index={idx} />
-                 {/* Hover Add Button for List View as well */}
+          <div 
+            className="flex flex-col items-center min-h-[450px] animate-fade-in-up"
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+          >
+            <div className="relative w-full max-w-lg">
+              
+              {/* Stack Effect (Background Card) */}
+              {currentCardIndex < papersToShow.length - 1 && (
+                <div className="absolute top-6 left-6 right-6 bottom-0 bg-[#303134] opacity-30 rounded-2xl -z-10 scale-[0.92] transform translate-y-2 transition-all duration-500 border border-[#5f6368]/20"></div>
+              )}
+
+              {/* Navigation Arrows (Desktop) */}
+              <button 
+                onClick={handlePrevCard}
+                disabled={currentCardIndex === 0}
+                className="absolute top-1/2 -left-14 -translate-y-1/2 p-3 rounded-full bg-[#303134] text-[#e8eaed] border border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
+              >
+                <ChevronLeftIcon className="w-6 h-6" />
+              </button>
+
+              <button 
+                onClick={handleNextCard}
+                disabled={currentCardIndex === papersToShow.length - 1}
+                className="absolute top-1/2 -right-14 -translate-y-1/2 p-3 rounded-full bg-[#303134] text-[#e8eaed] border border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
+              >
+                <ChevronRightIcon className="w-6 h-6" />
+              </button>
+
+              {/* Active Card */}
+              <div className="relative group transform transition-all duration-500 ease-out">
+                 <PaperCard 
+                    paper={papersToShow[currentCardIndex]} 
+                    index={currentCardIndex} 
+                    className="shadow-2xl border border-[#5f6368]/50"
+                 />
+                 
+                 {/* Add to Context Button (Floating on card) */}
                  <button 
-                    onClick={() => handleAddToContext(paper)}
-                    className="absolute top-4 right-4 bg-[#202124] text-[#e8eaed] border border-[#5f6368] p-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[#303134] hover:scale-110 hover:border-[#e8eaed]"
+                    onClick={() => handleAddToContext(papersToShow[currentCardIndex])}
+                    className="absolute top-4 right-4 bg-[#202124] text-[#e8eaed] border border-[#5f6368] p-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[#303134] hover:scale-110 hover:border-[#e8eaed] z-30"
                     title="Add to analysis context"
                  >
                    <PlusIcon className="w-4 h-4" />
                  </button>
               </div>
-            ))}
+            </div>
+
+            {/* Pagination Dots */}
+            <div className="flex items-center gap-2 mt-8">
+              {papersToShow.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentCardIndex(i)}
+                  className={`h-1.5 rounded-full transition-all duration-300 ${
+                    i === currentCardIndex ? 'w-8 bg-[#e8eaed]' : 'w-1.5 bg-[#5f6368] hover:bg-[#9aa0a6]'
+                  }`}
+                  aria-label={`Go to card ${i + 1}`}
+                />
+              ))}
+            </div>
+            
+            <p className="text-[#5f6368] text-[10px] uppercase tracking-widest mt-4 md:hidden">
+              Swipe to Navigate
+            </p>
           </div>
         ) : (
           <div className="bg-[#202124] rounded-2xl border border-[#5f6368]/30 shadow-inner min-h-[500px] flex items-center justify-center overflow-hidden animate-fade-in relative">
