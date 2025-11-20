@@ -9,13 +9,15 @@ interface GraphViewProps {
   type: 'correlated' | 'author';
   onAddToContext: (paper: Paper) => void;
   onNewSearch: (paper: Paper) => void;
+  isDarkMode: boolean;
 }
 
-const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddToContext, onNewSearch }) => {
+const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddToContext, onNewSearch, isDarkMode }) => {
   const [selectedPaper, setSelectedPaper] = useState<Paper | null>(null);
-  // Track which node is 'active' (clicked) to show the menu options
-  const [activeNodeIndex, setActiveNodeIndex] = useState<number | null>(null);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  // Track which node is 'active' (clicked) to show the menu options. 
+  // Use string IDs for roots ('root-0') and number IDs for results (0, 1, 2...)
+  const [activeNodeId, setActiveNodeId] = useState<string | number | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | number | null>(null);
   
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 600 });
@@ -61,8 +63,15 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
   const cy = dimensions.height / 2;
   const maxRadius = Math.min(dimensions.width, dimensions.height) * 0.45;
   
-  const rootColor = '#ffffff'; 
-  const nodeColor = '#e8eaed'; 
+  // Dynamic Colors based on Theme
+  const rootColor = isDarkMode ? '#ffffff' : '#202124'; 
+  const nodeColor = isDarkMode ? '#e8eaed' : '#3c4043'; 
+  const edgeColor = isDarkMode ? '#202124' : '#ffffff'; // Contrast for edge stroke
+  const bgColor = isDarkMode ? '#202124' : '#ffffff';
+  const surfaceColor = isDarkMode ? '#303134' : '#f8f9fa';
+  const borderColor = isDarkMode ? '#5f6368' : '#dadce0';
+  const textPrimary = isDarkMode ? '#e8eaed' : '#202124';
+  const textSecondary = isDarkMode ? '#9aa0a6' : '#5f6368';
 
   // 1. Calculate Root Cluster Positions
   const rootNodes = useMemo(() => {
@@ -79,7 +88,7 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
          oy = Math.sin(angle) * 30;
        }
 
-       return { paper, ox, oy };
+       return { paper, ox, oy, id: `root-${i}` };
     });
   }, [rootPapers]);
 
@@ -127,26 +136,231 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
     const relativeStrength = (score - scoreStats.min) / scoreStats.range;
     const radius = 25 + (relativeStrength * 30);
 
-    return { ...node, x, y, score, relativeStrength, radius, id: i };
+    return { ...node, x, y, score, relativeStrength, radius, id: i }; // numeric id
   });
 
   const clearSelection = () => {
-    setActiveNodeIndex(null);
+    setActiveNodeId(null);
     setSelectedPaper(null);
   };
 
+  // --- Helpers for Rendering ---
+
+  const renderRootNode = (root: any) => {
+    const isActive = activeNodeId === root.id;
+    const isHovered = hoveredId === root.id;
+    const showMenu = isActive || isHovered;
+
+    return (
+      <g 
+        key={`root-${root.id}`} 
+        transform={`translate(${root.ox}, ${root.oy})`}
+        onMouseEnter={() => setHoveredId(root.id)}
+        onMouseLeave={() => setHoveredId(null)}
+        onClick={(e) => {
+           e.stopPropagation();
+           setActiveNodeId(root.id);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          if (rootPapers.length > 1) {
+              onNewSearch(root.paper);
+          }
+        }}
+        className="cursor-pointer"
+        // Note: zIndex in style doesn't affect SVG order, but handled by render order below
+      >
+        {/* Pulse Effect */}
+        <circle r="65" fill={rootColor} fillOpacity="0.1" className="animate-pulse" />
+        {/* Main Circle */}
+        <circle 
+          r="55" 
+          fill={surfaceColor} 
+          stroke={rootColor} 
+          strokeWidth={isActive ? 4 : 3} 
+          className="shadow-lg transition-all duration-300" 
+        />
+        {/* Icon */}
+        <foreignObject x="-25" y="-25" width="50" height="50" className="pointer-events-none">
+            <div className="flex items-center justify-center h-full" style={{ color: textPrimary }}>
+              {type === 'correlated' ? <BookOpenIcon className="w-8 h-8" /> : <UsersIcon className="w-8 h-8" />}
+            </div>
+        </foreignObject>
+
+        {/* Root Menu Popup */}
+        <foreignObject 
+          x={-90} 
+          y={65} 
+          width="180" 
+          height="140" 
+          className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+        >
+          <div className="flex flex-col items-center space-y-2 pointer-events-auto">
+            {/* Title */}
+            <div className="text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm w-full truncate"
+                style={{ backgroundColor: surfaceColor, color: textPrimary, borderColor: borderColor, borderWidth: '1px' }}>
+              {root.paper.title}
+            </div>
+            
+            {/* Action Row (Only Info for Root) */}
+            <div className="flex items-center gap-2 p-1.5 rounded-full shadow-lg border"
+                style={{ backgroundColor: surfaceColor, borderColor: borderColor }}>
+              
+              <div className="text-[10px] font-bold px-2 py-1 rounded-full"
+                  style={{ backgroundColor: textPrimary, color: bgColor }}>
+                ROOT
+              </div>
+              
+              <div className="w-px h-4" style={{ backgroundColor: borderColor }}></div>
+
+              {/* Info Button */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPaper(root.paper);
+                }}
+                className="p-1 rounded-full transition-colors hover:opacity-80"
+                style={{ color: textPrimary }}
+                title="View Details"
+              >
+                <InfoIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </foreignObject>
+      </g>
+    );
+  };
+
+  const renderResultNode = (node: any) => {
+    const isHovered = hoveredId === node.id;
+    const isActive = activeNodeId === node.id;
+    const isSelected = selectedPaper === node.paper;
+    
+    const displayRadius = (isHovered || isActive) ? node.radius + 5 : node.radius;
+    const showMenu = isHovered || isActive;
+
+    return (
+      <g 
+        key={`node-${node.id}`} 
+        transform={`translate(${node.x}, ${node.y})`} 
+        onMouseEnter={() => setHoveredId(node.id)}
+        onMouseLeave={() => setHoveredId(null)}
+        onClick={(e) => {
+          e.stopPropagation();
+          setActiveNodeId(node.id);
+        }}
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          onNewSearch(node.paper);
+        }}
+        className="cursor-pointer transition-transform duration-300 ease-out"
+      >
+        {node.relativeStrength > 0.8 && (
+          <circle 
+              r={displayRadius + 8} 
+              stroke={rootColor} 
+              strokeWidth="2" 
+              strokeDasharray="4,4"
+              fill="none"
+              className="opacity-30 animate-spin-slow"
+          />
+        )}
+
+        <circle 
+          r={displayRadius} 
+          fill="url(#nodeGradient)"
+          stroke={isActive ? rootColor : (isHovered ? rootColor : surfaceColor)} 
+          strokeWidth={isActive ? 4 : (isHovered ? 3 : 1)}
+          filter={(isHovered || isActive) ? "url(#glow)" : ""}
+          className="transition-all duration-300"
+        />
+        
+        {/* Inner Dot */}
+        <circle r={displayRadius * 0.25} fill={bgColor} fillOpacity={0.6} />
+
+        {/* Menu Popup */}
+        <foreignObject 
+          x={-90} 
+          y={displayRadius + 10} 
+          width="180" 
+          height="140" 
+          className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
+        >
+          <div className="flex flex-col items-center space-y-2 pointer-events-auto">
+            {/* Title */}
+            <div className="text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm w-full truncate"
+                 style={{ backgroundColor: surfaceColor, color: textPrimary, borderColor: borderColor, borderWidth: '1px' }}>
+              {node.paper.title}
+            </div>
+            
+            {/* Action Row */}
+            <div className="flex items-center gap-2 p-1.5 rounded-full shadow-lg border"
+                 style={{ backgroundColor: surfaceColor, borderColor: borderColor }}>
+              {/* Match Score */}
+              <div className="text-[10px] font-bold px-2 py-1 rounded-full"
+                   style={{ backgroundColor: textPrimary, color: bgColor }}>
+                {node.score}%
+              </div>
+              
+              <div className="w-px h-4" style={{ backgroundColor: borderColor }}></div>
+
+              {/* Info Button */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedPaper(node.paper);
+                }}
+                className="p-1 rounded-full transition-colors hover:opacity-80"
+                style={{ color: textPrimary }}
+                title="View Details"
+              >
+                <InfoIcon className="w-4 h-4" />
+              </button>
+
+              {/* Plus Button */}
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAddToContext(node.paper);
+                }}
+                className="p-1 rounded-full transition-colors hover:opacity-80"
+                style={{ color: textPrimary }}
+                title="Add to analysis context"
+              >
+                <PlusIcon className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </foreignObject>
+      </g>
+    );
+  };
+
+  // Categorize nodes for Z-Index layering (Painter's Algorithm)
+  // 1. Inactive Roots
+  // 2. Inactive Results
+  // 3. Active/Hovered Results
+  // 4. Active/Hovered Roots (To ensure root menu is top-most if selected)
+  
+  const inactiveRoots = rootNodes.filter(r => r.id !== activeNodeId && r.id !== hoveredId);
+  const activeRoots = rootNodes.filter(r => r.id === activeNodeId || r.id === hoveredId);
+  
+  const inactiveResults = animatedNodes.filter(n => n.id !== activeNodeId && n.id !== hoveredId);
+  const activeResults = animatedNodes.filter(n => n.id === activeNodeId || n.id === hoveredId);
+
   return (
     <div 
-      className="relative w-full bg-[#202124]" 
-      style={{ height: dimensions.height }} 
+      className="relative w-full transition-colors duration-300" 
+      style={{ height: dimensions.height, backgroundColor: bgColor }} 
       ref={containerRef}
-      onClick={clearSelection} // Clicking background clears selection
+      onClick={clearSelection} 
     >
       
       {/* Background Artifacts - Subtle Monochrome Blobs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-64 h-64 bg-white rounded-full blur-3xl opacity-[0.02]"></div>
-        <div className="absolute bottom-1/3 right-1/4 w-96 h-96 bg-[#9aa0a6] rounded-full blur-3xl opacity-[0.03]"></div>
+        <div className={`absolute top-1/4 left-1/4 w-64 h-64 rounded-full blur-3xl opacity-[0.02] ${isDarkMode ? 'bg-white' : 'bg-black'}`}></div>
+        <div className={`absolute bottom-1/3 right-1/4 w-96 h-96 rounded-full blur-3xl opacity-[0.03] ${isDarkMode ? 'bg-[#9aa0a6]' : 'bg-[#5f6368]'}`}></div>
       </div>
 
       <svg 
@@ -156,8 +370,8 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
       >
         <defs>
           <radialGradient id="nodeGradient" cx="0.5" cy="0.5" r="0.5">
-            <stop offset="0%" stopColor="#ffffff" />
-            <stop offset="100%" stopColor="#bdc1c6" />
+            <stop offset="0%" stopColor={isDarkMode ? "#ffffff" : "#ffffff"} />
+            <stop offset="100%" stopColor={isDarkMode ? "#bdc1c6" : "#dadce0"} />
           </radialGradient>
           
           <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
@@ -196,7 +410,7 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
             <g key={`edge-${i}`}>
                <path 
                  d={`M ${startX} ${startY} Q ${cpX} ${cpY} ${node.x} ${node.y}`} 
-                 stroke="#202124" 
+                 stroke={bgColor} 
                  strokeWidth={width + 4} 
                  strokeOpacity={0.8}
                  fill="none" 
@@ -214,135 +428,22 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
           );
         })}
 
-        {/* LAYER 2: Root Cluster */}
-        <g transform={`translate(${cx}, ${cy})`} className="isolate cursor-default">
-           {rootNodes.map((root, idx) => (
-             <g key={`root-${idx}`} transform={`translate(${root.ox}, ${root.oy})`}>
-               <title>{root.paper.title}</title>
-               <circle r="65" fill={rootColor} fillOpacity="0.1" className="animate-pulse" />
-               <circle r="55" fill="#303134" stroke={rootColor} strokeWidth="3" className="shadow-lg" />
-               <foreignObject x="-25" y="-25" width="50" height="50">
-                  <div className="flex items-center justify-center h-full text-[#e8eaed]">
-                     {type === 'correlated' ? <BookOpenIcon className="w-8 h-8" /> : <UsersIcon className="w-8 h-8" />}
-                  </div>
-               </foreignObject>
-             </g>
-           ))}
+        {/* LAYER 2: Inactive Root Nodes */}
+        <g transform={`translate(${cx}, ${cy})`} className="isolate">
+           {inactiveRoots.map(renderRootNode)}
         </g>
 
-        {/* LAYER 3: Result Nodes */}
-        {/* Sort nodes so hovered/active ones are rendered last (on top) */}
-        {[...animatedNodes]
-          .sort((a, b) => {
-            const aIsActive = a.id === activeNodeIndex || a.id === hoveredIndex;
-            const bIsActive = b.id === activeNodeIndex || b.id === hoveredIndex;
-            
-            if (aIsActive && !bIsActive) return 1;
-            if (!aIsActive && bIsActive) return -1;
-            return a.id - b.id; // Maintain stable order for non-active nodes
-          })
-          .map((node) => {
-            // Note: node.id is the original index, used for stability
-            const isHovered = hoveredIndex === node.id;
-            const isActive = activeNodeIndex === node.id;
-            const isSelected = selectedPaper === node.paper;
-            
-            const displayRadius = (isHovered || isActive) ? node.radius + 5 : node.radius;
-            const showMenu = isHovered || isActive;
+        {/* LAYER 3: Inactive Result Nodes */}
+        {inactiveResults.map(renderResultNode)}
 
-            return (
-              <g 
-                key={`node-${node.id}`} 
-                transform={`translate(${node.x}, ${node.y})`} 
-                onMouseEnter={() => setHoveredIndex(node.id)}
-                onMouseLeave={() => setHoveredIndex(null)}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveNodeIndex(node.id);
-                }}
-                onDoubleClick={(e) => {
-                  e.stopPropagation();
-                  onNewSearch(node.paper);
-                }}
-                className="cursor-pointer transition-transform duration-300 ease-out"
-                style={{ zIndex: 100 + node.id }}
-              >
-                {node.relativeStrength > 0.8 && (
-                  <circle 
-                      r={displayRadius + 8} 
-                      stroke={rootColor} 
-                      strokeWidth="2" 
-                      strokeDasharray="4,4"
-                      fill="none"
-                      className="opacity-30 animate-spin-slow"
-                  />
-                )}
+        {/* LAYER 4: Active/Hovered Result Nodes */}
+        {activeResults.map(renderResultNode)}
 
-                <circle 
-                  r={displayRadius} 
-                  fill="url(#nodeGradient)"
-                  stroke={isActive ? rootColor : (isHovered ? rootColor : '#303134')} 
-                  strokeWidth={isActive ? 4 : (isHovered ? 3 : 1)}
-                  filter={(isHovered || isActive) ? "url(#glow)" : ""}
-                  className="transition-all duration-300"
-                />
-                
-                {/* Inner Dot */}
-                <circle r={displayRadius * 0.25} fill="#202124" fillOpacity={0.6} />
+        {/* LAYER 5: Active/Hovered Root Nodes (Highest Z-Index) */}
+        <g transform={`translate(${cx}, ${cy})`} className="isolate">
+           {activeRoots.map(renderRootNode)}
+        </g>
 
-                {/* Menu Popup (Visible on Hover or Single Click) */}
-                <foreignObject 
-                  x={-90} 
-                  y={displayRadius + 10} 
-                  width="180" 
-                  height="140" 
-                  className={`pointer-events-none transition-all duration-300 ${showMenu ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2'}`}
-                >
-                  <div className="flex flex-col items-center space-y-2 pointer-events-auto">
-                    {/* Title */}
-                    <div className="bg-[#303134] text-[#e8eaed] text-xs font-medium text-center px-3 py-2 rounded-xl shadow-xl leading-tight backdrop-blur-sm border border-[#5f6368]/50 w-full truncate">
-                      {node.paper.title}
-                    </div>
-                    
-                    {/* Action Row */}
-                    <div className="flex items-center gap-2 bg-[#303134] p-1.5 rounded-full border border-[#5f6368] shadow-lg">
-                      {/* Match Score */}
-                      <div className="text-[10px] font-bold text-[#202124] bg-[#e8eaed] px-2 py-1 rounded-full">
-                        {node.score}%
-                      </div>
-                      
-                      <div className="w-px h-4 bg-[#5f6368]"></div>
-
-                      {/* Info Button - Shows Detail Card */}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedPaper(node.paper);
-                        }}
-                        className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
-                        title="View Details"
-                      >
-                        <InfoIcon className="w-4 h-4" />
-                      </button>
-
-                      {/* Plus Button - Adds to Context */}
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onAddToContext(node.paper);
-                        }}
-                        className="text-[#e8eaed] hover:text-white hover:bg-[#5f6368] p-1 rounded-full transition-colors"
-                        title="Add to analysis context"
-                      >
-                        <PlusIcon className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </foreignObject>
-              </g>
-            );
-          })
-        }
       </svg>
 
       {/* Overlay Details Card */}
@@ -352,19 +453,23 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
             <div className="relative">
               <button 
                 onClick={(e) => { e.stopPropagation(); setSelectedPaper(null); }}
-                className="absolute -top-3 -right-3 bg-[#303134] text-[#e8eaed] rounded-full p-1.5 hover:bg-[#3c4043] shadow-lg z-50 transition-transform hover:scale-110 border border-[#5f6368]"
+                className="absolute -top-3 -right-3 rounded-full p-1.5 shadow-lg z-50 transition-transform hover:scale-110 border"
+                style={{ backgroundColor: surfaceColor, color: textPrimary, borderColor: borderColor }}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
               </button>
               <PaperCard 
                 paper={selectedPaper} 
                 index={0} 
-                className="max-h-[60vh] overflow-y-auto shadow-2xl border-t border-[#5f6368] custom-scrollbar" 
+                className="max-h-[60vh] overflow-y-auto shadow-2xl border-t custom-scrollbar" 
               />
             </div>
           </div>
         ) : (
-          <div className="bg-[#303134]/90 backdrop-blur-md text-[#9aa0a6] text-xs font-semibold px-5 py-2.5 rounded-full border border-[#5f6368]/60 shadow-lg pointer-events-auto transform hover:scale-105 transition-transform">
+          <div className="backdrop-blur-md text-xs font-semibold px-5 py-2.5 rounded-full border shadow-lg pointer-events-auto transform hover:scale-105 transition-transform"
+               style={{ backgroundColor: isDarkMode ? 'rgba(48, 49, 52, 0.9)' : 'rgba(255, 255, 255, 0.9)', 
+                        color: textSecondary, 
+                        borderColor: borderColor }}>
             Double Click Node to Reset Search
           </div>
         )}
@@ -383,10 +488,10 @@ const GraphView: React.FC<GraphViewProps> = ({ rootPapers, papers, type, onAddTo
           width: 6px;
         }
         .custom-scrollbar::-webkit-scrollbar-track {
-          background: #303134;
+          background: ${surfaceColor};
         }
         .custom-scrollbar::-webkit-scrollbar-thumb {
-          background: #5f6368;
+          background: ${borderColor};
           border-radius: 3px;
         }
       `}</style>

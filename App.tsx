@@ -1,10 +1,9 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { analyzePaper, getPaperSuggestions } from './services/geminiService';
 import { SearchState, TabState, Paper } from './types';
 import PaperCard from './components/PaperCard';
 import GraphView from './components/GraphView';
-import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon, ChevronDownIcon, HistoryIcon, ChevronLeftIcon, ChevronRightIcon } from './components/Icons';
+import { SearchIcon, AnimatedBookIcon, BookOpenIcon, UsersIcon, ArrowRightIcon, NetworkIcon, ListIcon, PlusIcon, SparklesIcon, ChevronDownIcon, HistoryIcon, ChevronLeftIcon, ChevronRightIcon, SunIcon, MoonIcon } from './components/Icons';
 
 type ViewMode = 'LIST' | 'GRAPH';
 
@@ -16,6 +15,9 @@ export default function App() {
   // History State: Stores arrays of Paper[] (previous contexts)
   const [searchHistory, setSearchHistory] = useState<Paper[][]>([]);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Theme State
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   const [state, setState] = useState<SearchState>({
     isLoading: false,
@@ -42,6 +44,15 @@ export default function App() {
   
   // Ref to prevent suggestion fetch loop when selecting an item
   const skipSuggestionFetch = useRef(false);
+
+  // Toggle Dark Mode
+  useEffect(() => {
+    if (isDarkMode) {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [isDarkMode]);
 
   useEffect(() => {
     // If we just selected a suggestion, don't trigger a new search immediately
@@ -136,8 +147,9 @@ export default function App() {
       title: query,
       authors: [], 
       year: '', 
-      summary: 'Initial Query', 
-      reason: 'Root', 
+      // Detailed summary ensures the card looks good even for the initial node
+      summary: `Primary search context established for "${query}". This node represents the central theme used to discover correlated research.`,
+      reason: 'Root Context',
       relevanceScore: 100 
     };
 
@@ -220,10 +232,10 @@ export default function App() {
       return (
         <div className="flex flex-col items-center justify-center py-20 space-y-6">
           <div className="relative w-20 h-20">
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#5f6368] rounded-full"></div>
-            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#e8eaed] rounded-full border-t-transparent animate-spin"></div>
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#dadce0] dark:border-[#5f6368] rounded-full"></div>
+            <div className="absolute top-0 left-0 w-full h-full border-4 border-[#202124] dark:border-[#e8eaed] rounded-full border-t-transparent animate-spin"></div>
           </div>
-          <p className="text-[#9aa0a6] animate-pulse font-medium">
+          <p className="text-[#5f6368] dark:text-[#9aa0a6] animate-pulse font-medium">
              {contextPapers.length > 1 ? 'Synthesizing...' : 'Analyzing literature graph...'}
           </p>
         </div>
@@ -232,9 +244,9 @@ export default function App() {
 
     if (state.error) {
       return (
-        <div className="bg-[#3c4043] border border-[#5f6368] text-[#e8eaed] p-6 rounded-xl text-center max-w-md mx-auto mt-10">
-          <p className="font-semibold text-white">Oops!</p>
-          <p className="text-[#9aa0a6]">{state.error}</p>
+        <div className="bg-[#fce8e6] dark:bg-[#3c4043] border border-[#fad2cf] dark:border-[#5f6368] text-[#c5221f] dark:text-[#e8eaed] p-6 rounded-xl text-center max-w-md mx-auto mt-10">
+          <p className="font-semibold dark:text-white">Oops!</p>
+          <p className="text-[#c5221f] dark:text-[#9aa0a6]">{state.error}</p>
         </div>
       );
     }
@@ -254,29 +266,29 @@ export default function App() {
       <div ref={resultsRef} className="animate-fade-in pb-20">
         
         {/* Context Dropdown (Collapsible Accordion) */}
-        <div className="mb-6 bg-[#303134] text-[#e8eaed] rounded-xl shadow-sm border border-[#5f6368]/30 overflow-hidden transition-all duration-300">
+        <div className="mb-6 bg-white dark:bg-[#303134] text-[#202124] dark:text-[#e8eaed] rounded-xl shadow-sm border border-[#dadce0] dark:border-[#5f6368]/30 overflow-hidden transition-all duration-300">
           <button 
             onClick={() => setIsContextExpanded(!isContextExpanded)}
-            className="w-full flex items-center justify-between p-4 text-left hover:bg-[#3c4043] transition-colors group"
+            className="w-full flex items-center justify-between p-4 text-left hover:bg-[#f8f9fa] dark:hover:bg-[#3c4043] transition-colors group"
           >
             <div className="flex items-center gap-3 overflow-hidden">
-               <div className="p-1.5 bg-[#202124] rounded-lg text-[#9aa0a6] shrink-0 group-hover:text-[#e8eaed] transition-colors">
+               <div className="p-1.5 bg-[#f1f3f4] dark:bg-[#202124] rounded-lg text-[#5f6368] dark:text-[#9aa0a6] shrink-0 group-hover:text-[#202124] dark:group-hover:text-[#e8eaed] transition-colors">
                  <BookOpenIcon className="w-4 h-4" />
                </div>
-               <span className="font-medium text-sm md:text-base truncate text-[#e8eaed] pr-4">
+               <span className="font-medium text-sm md:text-base truncate text-[#202124] dark:text-[#e8eaed] pr-4">
                  {contextTitle}
                </span>
             </div>
-            <ChevronDownIcon className={`w-5 h-5 text-[#9aa0a6] transition-transform duration-300 shrink-0 ${isContextExpanded ? 'rotate-180' : ''}`} />
+            <ChevronDownIcon className={`w-5 h-5 text-[#5f6368] dark:text-[#9aa0a6] transition-transform duration-300 shrink-0 ${isContextExpanded ? 'rotate-180' : ''}`} />
           </button>
 
           {/* Expanded Content */}
-          <div className={`bg-[#202124]/50 border-t border-[#5f6368]/30 transition-all duration-300 ease-in-out ${isContextExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
+          <div className={`bg-[#f8f9fa] dark:bg-[#202124]/50 border-t border-[#dadce0] dark:border-[#5f6368]/30 transition-all duration-300 ease-in-out ${isContextExpanded ? 'max-h-[500px] opacity-100' : 'max-h-0 opacity-0'}`}>
              <div className="p-4 md:p-6">
-                <h3 className="text-xs font-bold uppercase tracking-widest text-[#9aa0a6] mb-3">
+                <h3 className="text-xs font-bold uppercase tracking-widest text-[#5f6368] dark:text-[#9aa0a6] mb-3">
                     {contextPapers.length > 1 ? 'Cluster Analysis' : 'Core Theme'}
                 </h3>
-                <p className="text-lg font-serif leading-relaxed text-white">
+                <p className="text-lg font-serif leading-relaxed text-[#202124] dark:text-white">
                    {state.data.originalPaperContext}
                 </p>
              </div>
@@ -286,13 +298,13 @@ export default function App() {
         {/* Controls Row */}
         <div className="flex flex-col md:flex-row items-center justify-between gap-4 mb-8 sticky top-4 z-30">
           {/* Tabs */}
-          <div className="bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#5f6368]/30 w-full md:w-auto">
+          <div className="bg-white/90 dark:bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#dadce0] dark:border-[#5f6368]/30 w-full md:w-auto">
             <button
               onClick={() => setActiveTab(TabState.CORRELATED)}
               className={`flex-1 md:flex-none flex items-center justify-center py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === TabState.CORRELATED
-                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
-                  : 'text-[#9aa0a6] hover:text-[#e8eaed] hover:bg-[#3c4043]'
+                  ? 'bg-[#f1f3f4] dark:bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed] hover:bg-[#f8f9fa] dark:hover:bg-[#3c4043]'
               }`}
             >
               <BookOpenIcon className="w-4 h-4 mr-2" />
@@ -302,8 +314,8 @@ export default function App() {
               onClick={() => setActiveTab(TabState.AUTHOR_CONTEXT)}
               className={`flex-1 md:flex-none flex items-center justify-center py-2 px-4 rounded-lg text-sm font-semibold transition-all duration-200 ${
                 activeTab === TabState.AUTHOR_CONTEXT
-                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
-                  : 'text-[#9aa0a6] hover:text-[#e8eaed] hover:bg-[#3c4043]'
+                  ? 'bg-[#f1f3f4] dark:bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed] hover:bg-[#f8f9fa] dark:hover:bg-[#3c4043]'
               }`}
             >
               <UsersIcon className="w-4 h-4 mr-2" />
@@ -312,13 +324,13 @@ export default function App() {
           </div>
 
           {/* View Toggle */}
-          <div className="bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#5f6368]/30">
+          <div className="bg-white/90 dark:bg-[#303134]/90 backdrop-blur-md p-1.5 rounded-xl flex shadow-sm border border-[#dadce0] dark:border-[#5f6368]/30">
             <button
               onClick={() => setViewMode('LIST')}
               className={`p-2 rounded-lg transition-all duration-200 ${
                 viewMode === 'LIST'
-                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
-                  : 'text-[#9aa0a6] hover:text-[#e8eaed]'
+                  ? 'bg-[#f1f3f4] dark:bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed]'
               }`}
               title="List View"
             >
@@ -328,8 +340,8 @@ export default function App() {
               onClick={() => setViewMode('GRAPH')}
               className={`p-2 rounded-lg transition-all duration-200 ${
                 viewMode === 'GRAPH'
-                  ? 'bg-[#e8eaed] text-[#202124] shadow-sm'
-                  : 'text-[#9aa0a6] hover:text-[#e8eaed]'
+                  ? 'bg-[#f1f3f4] dark:bg-[#e8eaed] text-[#202124] shadow-sm'
+                  : 'text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed]'
               }`}
               title="Graph View"
             >
@@ -350,14 +362,14 @@ export default function App() {
               
               {/* Stack Effect (Background Card) */}
               {currentCardIndex < papersToShow.length - 1 && (
-                <div className="absolute top-6 left-6 right-6 bottom-0 bg-[#303134] opacity-30 rounded-2xl -z-10 scale-[0.92] transform translate-y-2 transition-all duration-500 border border-[#5f6368]/20"></div>
+                <div className="absolute top-6 left-6 right-6 bottom-0 bg-white dark:bg-[#303134] opacity-50 dark:opacity-30 rounded-2xl -z-10 scale-[0.92] transform translate-y-2 transition-all duration-500 border border-[#dadce0] dark:border-[#5f6368]/20"></div>
               )}
 
               {/* Navigation Arrows (Desktop) */}
               <button 
                 onClick={handlePrevCard}
                 disabled={currentCardIndex === 0}
-                className="absolute top-1/2 -left-14 -translate-y-1/2 p-3 rounded-full bg-[#303134] text-[#e8eaed] border border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
+                className="absolute top-1/2 -left-14 -translate-y-1/2 p-3 rounded-full bg-white dark:bg-[#303134] text-[#202124] dark:text-[#e8eaed] border border-[#dadce0] dark:border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#f8f9fa] dark:hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
               >
                 <ChevronLeftIcon className="w-6 h-6" />
               </button>
@@ -365,7 +377,7 @@ export default function App() {
               <button 
                 onClick={handleNextCard}
                 disabled={currentCardIndex === papersToShow.length - 1}
-                className="absolute top-1/2 -right-14 -translate-y-1/2 p-3 rounded-full bg-[#303134] text-[#e8eaed] border border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
+                className="absolute top-1/2 -right-14 -translate-y-1/2 p-3 rounded-full bg-white dark:bg-[#303134] text-[#202124] dark:text-[#e8eaed] border border-[#dadce0] dark:border-[#5f6368]/50 shadow-lg disabled:opacity-0 transition-all hover:bg-[#f8f9fa] dark:hover:bg-[#3c4043] hover:scale-110 z-20 hidden md:block"
               >
                 <ChevronRightIcon className="w-6 h-6" />
               </button>
@@ -375,13 +387,13 @@ export default function App() {
                  <PaperCard 
                     paper={papersToShow[currentCardIndex]} 
                     index={currentCardIndex} 
-                    className="shadow-2xl border border-[#5f6368]/50"
+                    className="shadow-2xl border border-[#dadce0] dark:border-[#5f6368]/50"
                  />
                  
                  {/* Add to Context Button (Floating on card) */}
                  <button 
                     onClick={() => handleAddToContext(papersToShow[currentCardIndex])}
-                    className="absolute top-4 right-4 bg-[#202124] text-[#e8eaed] border border-[#5f6368] p-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-[#303134] hover:scale-110 hover:border-[#e8eaed] z-30"
+                    className="absolute top-4 right-4 bg-[#f1f3f4] dark:bg-[#202124] text-[#202124] dark:text-[#e8eaed] border border-[#dadce0] dark:border-[#5f6368] p-2 rounded-full shadow-sm opacity-0 group-hover:opacity-100 transition-all hover:bg-white dark:hover:bg-[#303134] hover:scale-110 z-30"
                     title="Add to analysis context"
                  >
                    <PlusIcon className="w-4 h-4" />
@@ -396,30 +408,31 @@ export default function App() {
                   key={i}
                   onClick={() => setCurrentCardIndex(i)}
                   className={`h-1.5 rounded-full transition-all duration-300 ${
-                    i === currentCardIndex ? 'w-8 bg-[#e8eaed]' : 'w-1.5 bg-[#5f6368] hover:bg-[#9aa0a6]'
+                    i === currentCardIndex ? 'w-8 bg-[#202124] dark:bg-[#e8eaed]' : 'w-1.5 bg-[#dadce0] dark:bg-[#5f6368] hover:bg-[#9aa0a6]'
                   }`}
                   aria-label={`Go to card ${i + 1}`}
                 />
               ))}
             </div>
             
-            <p className="text-[#5f6368] text-[10px] uppercase tracking-widest mt-4 md:hidden">
+            <p className="text-[#5f6368] dark:text-[#5f6368] text-[10px] uppercase tracking-widest mt-4 md:hidden">
               Swipe to Navigate
             </p>
           </div>
         ) : (
-          <div className="bg-[#202124] rounded-2xl border border-[#5f6368]/30 shadow-inner min-h-[500px] flex items-center justify-center overflow-hidden animate-fade-in relative">
+          <div className="bg-white dark:bg-[#202124] rounded-2xl border border-[#dadce0] dark:border-[#5f6368]/30 shadow-inner min-h-[500px] flex items-center justify-center overflow-hidden animate-fade-in relative">
              <GraphView 
                rootPapers={contextPapers}
                papers={papersToShow}
                type={activeTab === TabState.CORRELATED ? 'correlated' : 'author'}
                onAddToContext={handleAddToContext}
                onNewSearch={handleNewSearch}
+               isDarkMode={isDarkMode}
              />
           </div>
         )}
         
-        <div className="mt-12 text-center text-[#9aa0a6] text-xs">
+        <div className="mt-12 text-center text-[#5f6368] dark:text-[#9aa0a6] text-xs">
           AI-generated results. Verify details on Google Scholar.
         </div>
       </div>
@@ -427,18 +440,30 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#202124] text-[#e8eaed]">
+    <div className="min-h-screen flex flex-col bg-white dark:bg-[#202124] text-[#202124] dark:text-[#e8eaed] transition-colors duration-300">
+      
+      {/* Theme Toggle - Fixed in Top Right */}
+      <div className="fixed top-4 right-4 z-50">
+        <button 
+          onClick={() => setIsDarkMode(!isDarkMode)}
+          className="p-2 rounded-full bg-white dark:bg-[#303134] text-[#5f6368] dark:text-[#e8eaed] shadow-md border border-[#dadce0] dark:border-[#5f6368]/50 hover:scale-110 transition-all"
+          title={isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+        >
+          {isDarkMode ? <SunIcon className="w-5 h-5" /> : <MoonIcon className="w-5 h-5" />}
+        </button>
+      </div>
+
       {/* Navbar - Only visible on Landing Page */}
       {isLanding && (
-        <header className="bg-[#202124] sticky top-0 z-50 pt-4">
+        <header className="bg-white dark:bg-[#202124] sticky top-0 z-40 pt-4">
           <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-center">
             <div className="flex items-center space-x-3 cursor-pointer" onClick={() => {
                 setContextPapers([]);
                 setState({ isLoading: false, error: null, data: null });
                 setQuery('');
             }}>
-              <BookOpenIcon className="w-6 h-6 text-[#e8eaed]" />
-              <span className="text-xl font-bold text-[#e8eaed] tracking-tight">Nexus</span>
+              <BookOpenIcon className="w-6 h-6 text-[#202124] dark:text-[#e8eaed]" />
+              <span className="text-xl font-bold text-[#202124] dark:text-[#e8eaed] tracking-tight">Nexus</span>
             </div>
           </div>
         </header>
@@ -454,24 +479,19 @@ export default function App() {
             <div className="mb-6 text-[#5f6368]">
               <SparklesIcon className="w-24 h-24 animate-fidget-spin" />
             </div>
-            <h2 className="text-2xl font-bold text-[#9aa0a6]">Start your discovery</h2>
+            <h2 className="text-2xl font-bold text-[#202124] dark:text-[#9aa0a6]">Start your discovery</h2>
             <p className="text-[#5f6368] mt-2 text-center max-w-md px-4">Enter a paper title to map its connections.</p>
           </div>
         )}
 
-        {/* Main Layout Container 
-            - If isLanding: flex-grow pushes content to bottom (justify-end)
-            - If results: Standard flow, search bar at top (pt-6)
-        */}
+        {/* Main Layout Container */}
         <div className={`max-w-4xl mx-auto w-full px-4 flex flex-col transition-all duration-500 ${isLanding ? 'flex-grow justify-end pb-12' : 'pt-6'}`}>
           
-          {/* Search Bar Area 
-              - When !isLanding, we make it sticky at the top to serve as the new 'header'
-          */}
+          {/* Search Bar Area */}
           <div className={`relative z-40 w-full max-w-2xl mx-auto ${!isLanding ? 'sticky top-4' : ''}`}>
             <form onSubmit={handleInitialSearch} className="relative z-10">
               <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                <SearchIcon className="h-6 w-6 text-[#9aa0a6] group-focus-within:text-[#e8eaed] transition-colors" />
+                <SearchIcon className="h-6 w-6 text-[#5f6368] dark:text-[#9aa0a6] group-focus-within:text-[#202124] dark:group-focus-within:text-[#e8eaed] transition-colors" />
               </div>
               <input
                 type="text"
@@ -484,15 +504,15 @@ export default function App() {
                   if (suggestions.length > 0 && query.length >= 3) setShowSuggestions(true);
                 }}
                 placeholder="e.g. Attention Is All You Need"
-                className="block w-full pl-12 pr-16 py-4 bg-[#303134] text-[#e8eaed] border-2 border-transparent rounded-2xl text-lg placeholder-[#9aa0a6] focus:outline-none focus:border-[#e8eaed] focus:ring-4 focus:ring-[#e8eaed]/10 transition-all shadow-xl shadow-black/20"
+                className="block w-full pl-12 pr-16 py-4 bg-white dark:bg-[#303134] text-[#202124] dark:text-[#e8eaed] border-2 border-transparent rounded-2xl text-lg placeholder-[#5f6368] dark:placeholder-[#9aa0a6] focus:outline-none focus:border-[#202124] dark:focus:border-[#e8eaed] focus:ring-4 focus:ring-[#202124]/10 dark:focus:ring-[#e8eaed]/10 transition-all shadow-xl shadow-black/10 dark:shadow-black/20"
               />
               <button
                 type="submit"
                 disabled={state.isLoading || !query.trim()}
-                className="absolute right-2 top-2 bottom-2 bg-[#e8eaed] hover:bg-white text-[#202124] px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
+                className="absolute right-2 top-2 bottom-2 bg-[#202124] dark:bg-[#e8eaed] hover:bg-[#3c4043] dark:hover:bg-white text-white dark:text-[#202124] px-4 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center"
               >
                 {state.isLoading ? (
-                  <span className="w-5 h-5 border-2 border-[#202124]/30 border-t-[#202124] rounded-full animate-spin"></span>
+                  <span className="w-5 h-5 border-2 border-white/30 dark:border-[#202124]/30 border-t-white dark:border-t-[#202124] rounded-full animate-spin"></span>
                 ) : (
                   <ArrowRightIcon className="w-5 h-5" />
                 )}
@@ -501,16 +521,16 @@ export default function App() {
 
             {/* Autocomplete Dropdown */}
             {(showSuggestions || isFetchingSuggestions) && query.length >= 3 && (
-              <div className={`absolute left-0 right-0 bg-[#303134] rounded-xl border border-[#5f6368]/50 shadow-xl overflow-hidden animate-fade-in-up z-50 ${isLanding ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
+              <div className={`absolute left-0 right-0 bg-white dark:bg-[#303134] rounded-xl border border-[#dadce0] dark:border-[#5f6368]/50 shadow-xl overflow-hidden animate-fade-in-up z-50 ${isLanding ? 'bottom-full mb-2' : 'top-full mt-2'}`}>
                 {isFetchingSuggestions && suggestions.length === 0 && (
-                  <div className="p-4 text-center text-[#9aa0a6] text-sm flex items-center justify-center">
-                      <span className="w-4 h-4 border-2 border-[#e8eaed] border-t-transparent rounded-full animate-spin mr-2"></span>
+                  <div className="p-4 text-center text-[#5f6368] dark:text-[#9aa0a6] text-sm flex items-center justify-center">
+                      <span className="w-4 h-4 border-2 border-[#202124] dark:border-[#e8eaed] border-t-transparent rounded-full animate-spin mr-2"></span>
                       Finding papers...
                   </div>
                 )}
                 
                 {!isFetchingSuggestions && suggestions.length === 0 && (
-                  <div className="p-4 text-center text-[#9aa0a6] text-sm">
+                  <div className="p-4 text-center text-[#5f6368] dark:text-[#9aa0a6] text-sm">
                       No suggestions found.
                   </div>
                 )}
@@ -520,15 +540,15 @@ export default function App() {
                     key={index}
                     type="button"
                     onClick={() => handleSelectSuggestion(suggestion)}
-                    className="w-full text-left px-4 py-3 text-[#e8eaed] hover:bg-[#3c4043] transition-colors border-b border-[#5f6368]/30 last:border-0 flex items-center group"
+                    className="w-full text-left px-4 py-3 text-[#202124] dark:text-[#e8eaed] hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] transition-colors border-b border-[#dadce0] dark:border-[#5f6368]/30 last:border-0 flex items-center group"
                   >
-                    <BookOpenIcon className="w-4 h-4 mr-3 text-[#9aa0a6] group-hover:text-[#e8eaed]" />
+                    <BookOpenIcon className="w-4 h-4 mr-3 text-[#dadce0] dark:text-[#9aa0a6] group-hover:text-[#202124] dark:group-hover:text-[#e8eaed]" />
                     <span className="truncate font-medium">{suggestion}</span>
                   </button>
                 ))}
                 
                 {suggestions.length > 0 && (
-                  <div className="px-4 py-2 bg-[#202124] text-right text-[10px] text-[#9aa0a6] uppercase tracking-wider font-bold">
+                  <div className="px-4 py-2 bg-[#f8f9fa] dark:bg-[#202124] text-right text-[10px] text-[#5f6368] dark:text-[#9aa0a6] uppercase tracking-wider font-bold">
                     Suggestions
                   </div>
                 )}
@@ -546,14 +566,14 @@ export default function App() {
         </div>
       </main>
 
-      {/* History Floating Button & Popover - Only shown if history exists and NOT on landing page */}
+      {/* History Floating Button & Popover */}
       {!isLanding && searchHistory.length > 0 && (
         <div className="fixed bottom-6 left-6 z-50">
           {isHistoryOpen && (
-            <div className="absolute bottom-full left-0 mb-4 w-72 bg-[#303134] border border-[#5f6368]/50 rounded-xl shadow-2xl overflow-hidden animate-fade-in-up">
-              <div className="px-4 py-3 border-b border-[#5f6368]/30 flex justify-between items-center bg-[#202124]">
-                <span className="text-xs font-bold uppercase tracking-wider text-[#9aa0a6]">Recent Searches</span>
-                <button onClick={() => setIsHistoryOpen(false)} className="text-[#9aa0a6] hover:text-[#e8eaed]">
+            <div className="absolute bottom-full left-0 mb-4 w-72 bg-white dark:bg-[#303134] border border-[#dadce0] dark:border-[#5f6368]/50 rounded-xl shadow-2xl overflow-hidden animate-fade-in-up">
+              <div className="px-4 py-3 border-b border-[#dadce0] dark:border-[#5f6368]/30 flex justify-between items-center bg-[#f8f9fa] dark:bg-[#202124]">
+                <span className="text-xs font-bold uppercase tracking-wider text-[#5f6368] dark:text-[#9aa0a6]">Recent Searches</span>
+                <button onClick={() => setIsHistoryOpen(false)} className="text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed]">
                   <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
                 </button>
               </div>
@@ -564,15 +584,15 @@ export default function App() {
                     <button 
                       key={idx}
                       onClick={() => handleRestoreHistory(histCtx)}
-                      className="w-full text-left px-4 py-3 hover:bg-[#3c4043] transition-colors border-b border-[#5f6368]/30 last:border-0 flex items-start gap-3 group"
+                      className="w-full text-left px-4 py-3 hover:bg-[#f1f3f4] dark:hover:bg-[#3c4043] transition-colors border-b border-[#dadce0] dark:border-[#5f6368]/30 last:border-0 flex items-start gap-3 group"
                     >
-                      <div className="mt-1 opacity-50 group-hover:opacity-100 text-[#e8eaed]">
+                      <div className="mt-1 opacity-50 group-hover:opacity-100 text-[#202124] dark:text-[#e8eaed]">
                           {histCtx.length > 1 ? <NetworkIcon className="w-4 h-4" /> : <BookOpenIcon className="w-4 h-4" />}
                       </div>
                       <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium text-[#e8eaed] truncate">{label}</div>
+                          <div className="text-sm font-medium text-[#202124] dark:text-[#e8eaed] truncate">{label}</div>
                           {histCtx.length > 1 && (
-                            <div className="text-[10px] text-[#9aa0a6] truncate mt-0.5">
+                            <div className="text-[10px] text-[#5f6368] dark:text-[#9aa0a6] truncate mt-0.5">
                               {histCtx.map(p => p.title).slice(0, 2).join(', ')}...
                             </div>
                           )}
@@ -586,8 +606,8 @@ export default function App() {
           
           <button 
             onClick={() => setIsHistoryOpen(!isHistoryOpen)}
-            className={`p-3.5 rounded-full shadow-lg border border-[#5f6368]/50 transition-all duration-300 ${
-              isHistoryOpen ? 'bg-[#e8eaed] text-[#202124] hover:bg-white' : 'bg-[#303134] text-[#9aa0a6] hover:text-[#e8eaed]'
+            className={`p-3.5 rounded-full shadow-lg border border-[#dadce0] dark:border-[#5f6368]/50 transition-all duration-300 ${
+              isHistoryOpen ? 'bg-[#f1f3f4] dark:bg-[#e8eaed] text-[#202124] dark:text-[#202124] hover:bg-white' : 'bg-white dark:bg-[#303134] text-[#5f6368] dark:text-[#9aa0a6] hover:text-[#202124] dark:hover:text-[#e8eaed]'
             }`}
             title="Search History"
           >
@@ -611,7 +631,7 @@ export default function App() {
           animation: fadeInUp 0.2s ease-out forwards;
         }
         
-        /* Fidget Spinner Style Animation: Rapid acceleration/deceleration */
+        /* Fidget Spinner Style Animation */
         @keyframes fidget-spin {
           0% { transform: rotate(0deg); }
           10% { transform: rotate(0deg); }
@@ -621,7 +641,6 @@ export default function App() {
         }
 
         .animate-fidget-spin {
-          /* Sharp curve for acceleration feeling */
           animation: fidget-spin 2.5s cubic-bezier(0.85, 0, 0.15, 1) infinite;
         }
       `}</style>
