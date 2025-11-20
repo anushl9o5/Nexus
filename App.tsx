@@ -258,17 +258,14 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col bg-[#202124] text-[#e8eaed]">
       {/* Navbar */}
-      <header className="bg-[#303134] border-b border-[#5f6368] sticky top-0 z-50">
-        {/* Changed to justify-center to center align the title */}
+      <header className="bg-[#202124] sticky top-0 z-50 pt-4">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-center">
-          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => {
+          <div className="flex items-center space-x-3 cursor-pointer" onClick={() => {
               setContextPapers([]);
               setState({ isLoading: false, error: null, data: null });
               setQuery('');
           }}>
-            <div className="bg-[#e8eaed] p-1.5 rounded-lg">
-              <BookOpenIcon className="w-5 h-5 text-[#202124]" />
-            </div>
+            <BookOpenIcon className="w-6 h-6 text-[#e8eaed]" />
             <span className="text-xl font-bold text-[#e8eaed] tracking-tight">ResearchNexus</span>
           </div>
         </div>
